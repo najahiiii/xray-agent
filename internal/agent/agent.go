@@ -72,7 +72,8 @@ func (a *Agent) reconcileOnce(ctx context.Context) error {
 		return nil
 	}
 
-	changed, err := a.xray.ApplyDesired(ds.Clients)
+	current := a.state.ClientsSnapshot()
+	changed, err := a.xray.ApplyDesired(ctx, current, ds.Clients)
 	if err != nil {
 		return err
 	}

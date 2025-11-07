@@ -1,31 +1,30 @@
 package state
 
-import "github.com/najahiiii/xray-agent/internal/model"
+import (
+	"sync"
 
-import "sync"
+	"github.com/najahiiii/xray-agent/internal/model"
+)
 
 type Store struct {
 	mu          sync.RWMutex
 	lastVersion int64
-	emails      map[string]struct{}
+	clients     map[string]model.DesiredClient
 }
 
 func New() *Store {
-	return &Store{emails: map[string]struct{}{}}
+	return &Store{clients: map[string]model.DesiredClient{}}
 }
 
 func (s *Store) IsUnchanged(version int64, clients []model.DesiredClient) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if version != s.lastVersion {
-		return false
-	}
-	if len(clients) != len(s.emails) {
+	if version != s.lastVersion || len(clients) != len(s.clients) {
 		return false
 	}
 	for _, c := range clients {
-		if _, ok := s.emails[c.Email]; !ok {
+		if existing, ok := s.clients[c.Email]; !ok || !equalClient(existing, c) {
 			return false
 		}
 	}
@@ -36,21 +35,36 @@ func (s *Store) Update(version int64, clients []model.DesiredClient) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.lastVersion = version
-	emails := make(map[string]struct{}, len(clients))
+	next := make(map[string]model.DesiredClient, len(clients))
 	for _, c := range clients {
-		emails[c.Email] = struct{}{}
+		next[c.Email] = c
 	}
-	s.emails = emails
+	s.lastVersion = version
+	s.clients = next
 }
 
 func (s *Store) Emails() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	out := make([]string, 0, len(s.emails))
-	for email := range s.emails {
-		out = append(out, email)
+	emails := make([]string, 0, len(s.clients))
+	for email := range s.clients {
+		emails = append(emails, email)
 	}
-	return out
+	return emails
+}
+
+func (s *Store) ClientsSnapshot() map[string]model.DesiredClient {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	snapshot := make(map[string]model.DesiredClient, len(s.clients))
+	for email, client := range s.clients {
+		snapshot[email] = client
+	}
+	return snapshot
+}
+
+func equalClient(a, b model.DesiredClient) bool {
+	return a.Proto == b.Proto && a.ID == b.ID && a.Password == b.Password
 }

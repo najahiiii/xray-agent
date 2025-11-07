@@ -1,3 +1,4 @@
+.vscode
 xray-agent
 *.tmp-*
 *.tmp

@@ -14,6 +14,13 @@ A robust provisioning agent for Xray nodes. It pulls desired state from a contro
 
 See [packaging/config.example.yaml](packaging/config.example.yaml).
 
+### Apply modes
+
+`xray.apply_mode` controls how client changes are pushed:
+
+- `config_patch` (default) — patches the JSON config under a flock-protected lock, validates via `xray -test`, then reloads with exponential backoff.
+- `handler_service` — talks to Xray’s gRPC HandlerService, adding/removing users without touching the config file or reloading. Ensure the API server is enabled and reachable at `xray.api_server`.
+
 ## Systemd
 
 See [packaging/xray-agent.service](packaging/xray-agent.service).

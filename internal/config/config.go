@@ -20,8 +20,11 @@ type Config struct {
 		Binary             string `yaml:"binary"`
 		ConfigPath         string `yaml:"config_path"`
 		APIServer          string `yaml:"api_server"`
+		APITimeoutSec      int    `yaml:"api_timeout_sec"`
 		ReloadCmd          string `yaml:"reload_cmd"`
 		StatsResetEachPush bool   `yaml:"stats_reset_each_push"`
+		ApplyMode          string `yaml:"apply_mode"`
+		LockFile           string `yaml:"lock_file"`
 		InboundTags        struct {
 			VLESS  string `yaml:"vless"`
 			VMESS  string `yaml:"vmess"`
@@ -68,6 +71,12 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Intervals.HeartbeatSec == 0 {
 		cfg.Intervals.HeartbeatSec = 30
+	}
+	if cfg.Xray.APITimeoutSec <= 0 {
+		cfg.Xray.APITimeoutSec = 5
+	}
+	if cfg.Xray.ApplyMode == "" {
+		cfg.Xray.ApplyMode = "config_patch"
 	}
 
 	return &cfg, nil
