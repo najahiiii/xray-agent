@@ -1,0 +1,24 @@
+control:
+  base_url: "https://panel.example.com"
+  token: "AGENT_BEARER_TOKEN"
+  server_slug: "sg-1"
+  tls_insecure: false
+
+xray:
+  binary: "/usr/local/bin/xray"
+  config_path: "/etc/xray/config.json"
+  api_server: "127.0.0.1:10085"
+  reload_cmd: "systemctl reload xray" # fallback: restart
+  stats_reset_each_push: true
+  inbound_tags:
+    vless: "vless-ws"
+    vmess: "vmess-ws"
+    trojan: "trojan-ws"
+
+intervals:
+  desired_state_sec: 15
+  stats_sec: 60
+  heartbeat_sec: 30
+
+logging:
+  level: "info" # debug|info|warn|error

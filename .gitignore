@@ -1,0 +1,5 @@
+xray-agent
+*.tmp-*
+*.tmp
+*.log
+*.out

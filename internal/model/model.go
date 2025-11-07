@@ -1,0 +1,27 @@
+package model
+
+import "time"
+
+type DesiredState struct {
+	ConfigVersion int64           `json:"config_version"`
+	Clients       []DesiredClient `json:"clients"`
+	Meta          map[string]any  `json:"meta,omitempty"`
+}
+
+type DesiredClient struct {
+	Proto    string `json:"proto"`
+	ID       string `json:"id,omitempty"`
+	Password string `json:"password,omitempty"`
+	Email    string `json:"email"`
+}
+
+type StatsPush struct {
+	ServerTime time.Time   `json:"server_time"`
+	Users      []UserUsage `json:"users"`
+}
+
+type UserUsage struct {
+	Email    string `json:"email"`
+	Uplink   int64  `json:"uplink"`
+	Downlink int64  `json:"downlink"`
+}
