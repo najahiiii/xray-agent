@@ -5,6 +5,7 @@
     "loglevel": "warning"
   },
   "api": {
+    "tag": "xray-api",
     "services": ["HandlerService", "LoggerService", "StatsService"]
   },
   "stats": {},

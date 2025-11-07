@@ -25,19 +25,31 @@ err() { echo -e "[!] $*" >&2; }
 need_root() { if [[ $EUID -ne 0 ]]; then err "Run as root"; exit 1; fi }
 
 install_deps() {
+  local required=(curl jq unzip)
+  local missing=()
+  for cmd in "${required[@]}"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing+=("$cmd")
+    fi
+  done
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    log "All required dependencies already installed"
+    return
+  fi
+
   if command -v apt-get >/dev/null 2>&1; then
     apt-get update -y
-    DEBIAN_FRONTEND=noninteractive apt-get install -y curl jq unzip ca-certificates
+    DEBIAN_FRONTEND=noninteractive apt-get install -y "${missing[@]}" ca-certificates
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y curl jq unzip ca-certificates || true
+    dnf install -y "${missing[@]}" ca-certificates || true
     update-ca-trust || true
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y curl jq unzip ca-certificates || true
+    yum install -y "${missing[@]}" ca-certificates || true
     update-ca-trust || true
   elif command -v pacman >/dev/null 2>&1; then
-    pacman -Sy --noconfirm curl jq unzip ca-certificates
+    pacman -Sy --noconfirm "${missing[@]}" ca-certificates
   else
-    err "Unsupported distro. Please install curl jq unzip ca-certificates manually."; exit 1
+    err "Unsupported distro. Please install: ${missing[*]} ca-certificates"; exit 1
   fi
 }
 
@@ -54,7 +66,8 @@ parse_args() {
 }
 
 detect_arch() {
-  local u=$(uname -m)
+  local u
+  u=$(uname -m)
   case "$u" in
     x86_64|amd64) ARCH="linux-64";;
     aarch64|arm64) ARCH="linux-arm64-v8a";;
@@ -93,7 +106,7 @@ pick_asset_urls() {
 verify_sha256() {
   local zip="$1" dgst_file="$2"
   local want
-  want=$(grep -E 'SHA256 \(.*\) = ' "$dgst_file" | awk '{print $NF}' | head -n1)
+  want=$(grep -Eo '[A-Fa-f0-9]{64}' "$dgst_file" | head -n1)
   if [[ -z "$want" ]]; then err "SHA256 not found in .dgst"; exit 1; fi
   local got
   got=$(sha256sum "$zip" | awk '{print $1}')
@@ -127,6 +140,7 @@ write_sample_config_if_absent() {
     "loglevel": "warning"
   },
   "api": {
+    "tag": "xray-api",
     "services": ["HandlerService", "LoggerService", "StatsService"]
   },
   "stats": {},
