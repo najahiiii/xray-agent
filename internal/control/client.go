@@ -45,8 +45,8 @@ func (c *Client) auth(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+c.cfg.Control.Token)
 }
 
-func (c *Client) GetDesiredState(ctx context.Context) (*model.DesiredState, error) {
-	url := fmt.Sprintf("%s/api/agents/%s/desired-state", c.cfg.Control.BaseURL, c.cfg.Control.ServerSlug)
+func (c *Client) GetState(ctx context.Context) (*model.State, error) {
+	url := fmt.Sprintf("%s/api/agents/%s/state", c.cfg.Control.BaseURL, c.cfg.Control.ServerSlug)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -61,10 +61,10 @@ func (c *Client) GetDesiredState(ctx context.Context) (*model.DesiredState, erro
 
 	if resp.StatusCode/100 != 2 {
 		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("desired-state http %d: %s", resp.StatusCode, string(b))
+		return nil, fmt.Errorf("state http %d: %s", resp.StatusCode, string(b))
 	}
 
-	var ds model.DesiredState
+	var ds model.State
 	if err := json.NewDecoder(resp.Body).Decode(&ds); err != nil {
 		return nil, err
 	}

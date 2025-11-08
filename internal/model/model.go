@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-type DesiredState struct {
+type State struct {
 	ConfigVersion int64           `json:"config_version"`
 	Clients       []DesiredClient `json:"clients"`
 	Meta          map[string]any  `json:"meta,omitempty"`

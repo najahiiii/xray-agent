@@ -36,13 +36,13 @@ func New(cfg *config.Config, log *slog.Logger, ctrl *control.Client, xr *xray.Ma
 }
 
 func (a *Agent) Start(ctx context.Context) {
-	go a.runDesiredLoop(ctx)
+	go a.runStateLoop(ctx)
 	go a.runStatsLoop(ctx)
 	go a.runHeartbeatLoop(ctx)
 }
 
-func (a *Agent) runDesiredLoop(ctx context.Context) {
-	intv := time.Duration(a.cfg.Intervals.DesiredStateSec) * time.Second
+func (a *Agent) runStateLoop(ctx context.Context) {
+	intv := time.Duration(a.cfg.Intervals.StateSec) * time.Second
 	if intv <= 0 {
 		intv = 15 * time.Second
 	}
@@ -50,8 +50,8 @@ func (a *Agent) runDesiredLoop(ctx context.Context) {
 	defer ticker.Stop()
 
 	for {
-		if err := a.reconcileOnce(ctx); err != nil {
-			a.log.Warn("reconcile", "err", err)
+		if err := a.syncStateOnce(ctx); err != nil {
+			a.log.Warn("state-sync", "err", err)
 		}
 
 		select {
@@ -62,18 +62,18 @@ func (a *Agent) runDesiredLoop(ctx context.Context) {
 	}
 }
 
-func (a *Agent) reconcileOnce(ctx context.Context) error {
-	ds, err := a.ctrl.GetDesiredState(ctx)
+func (a *Agent) syncStateOnce(ctx context.Context) error {
+	ds, err := a.ctrl.GetState(ctx)
 	if err != nil {
 		return err
 	}
 	if a.state.IsUnchanged(ds.ConfigVersion, ds.Clients) {
-		a.log.Debug("desired-state unchanged")
+		a.log.Debug("state unchanged")
 		return nil
 	}
 
 	current := a.state.ClientsSnapshot()
-	changed, err := a.xray.ApplyDesired(ctx, current, ds.Clients)
+	changed, err := a.xray.State(ctx, current, ds.Clients)
 	if err != nil {
 		return err
 	}

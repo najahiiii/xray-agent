@@ -1,12 +1,12 @@
 # xray-agent (Go)
 
-A robust provisioning agent for Xray nodes. It pulls desired state from a control-plane, patches Xray config atomically, reloads Xray, collects per-user usage via Xray API/Stats, sends heartbeat & stats back.
+A robust provisioning agent for Xray nodes. It pulls state from a control-plane, patches Xray config atomically, reloads Xray, collects per-user usage via Xray API/Stats, sends heartbeat & stats back.
 
 ## Features
 
 - Multi-protocol aware: VLESS, VMess, Trojan (via separate inbound tags)
 - Atomic config patch + `xray -test` validation + reload
-- Periodic reconcile (desired-state), stats push, and heartbeat
+- Periodic state reconcile, stats push, and heartbeat
 - Per-user usage based on `email` (works across protocols)
 - Simple, dependency-light build
 
@@ -36,7 +36,7 @@ go build -o xray-agent ./
 
 ## Expected Control-Plane API
 
-- `GET  /api/agents/{server_slug}/desired-state`
+- `GET  /api/agents/{server_slug}/state`
 
   ```json
   {

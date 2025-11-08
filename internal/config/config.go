@@ -29,9 +29,9 @@ type Config struct {
 	} `yaml:"xray"`
 
 	Intervals struct {
-		DesiredStateSec int `yaml:"desired_state_sec"`
-		StatsSec        int `yaml:"stats_sec"`
-		HeartbeatSec    int `yaml:"heartbeat_sec"`
+		StateSec     int `yaml:"state_sec"`
+		StatsSec     int `yaml:"stats_sec"`
+		HeartbeatSec int `yaml:"heartbeat_sec"`
 	} `yaml:"intervals"`
 
 	Logging struct {
@@ -59,8 +59,8 @@ func Load(path string) (*Config, error) {
 	if cfg.Xray.InboundTags.VLESS == "" || cfg.Xray.InboundTags.VMESS == "" || cfg.Xray.InboundTags.TROJAN == "" {
 		return nil, fmt.Errorf("xray.inbound_tags (vless/vmess/trojan) required")
 	}
-	if cfg.Intervals.DesiredStateSec == 0 {
-		cfg.Intervals.DesiredStateSec = 15
+	if cfg.Intervals.StateSec == 0 {
+		cfg.Intervals.StateSec = 15
 	}
 	if cfg.Intervals.StatsSec == 0 {
 		cfg.Intervals.StatsSec = 60

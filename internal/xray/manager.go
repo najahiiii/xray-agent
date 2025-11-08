@@ -29,7 +29,7 @@ func NewManager(cfg *config.Config, log *slog.Logger) *Manager {
 	return &Manager{cfg: cfg, log: log}
 }
 
-func (m *Manager) ApplyDesired(ctx context.Context, current map[string]model.DesiredClient, desired []model.DesiredClient) (bool, error) {
+func (m *Manager) State(ctx context.Context, current map[string]model.DesiredClient, desired []model.DesiredClient) (bool, error) {
 	return m.applyViaHandler(ctx, current, desired)
 }
 

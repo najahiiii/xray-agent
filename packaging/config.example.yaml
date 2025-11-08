@@ -15,7 +15,7 @@ xray:
     trojan: "trojan-ws"
 
 intervals:
-  desired_state_sec: 15
+  state_sec: 15
   stats_sec: 60
   heartbeat_sec: 30
 
