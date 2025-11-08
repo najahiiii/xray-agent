@@ -1,15 +1,18 @@
 package stats
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/najahiiii/xray-agent/internal/config"
 
+	statscommand "github.com/xtls/xray-core/app/stats/command"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+
 	"log/slog"
-	"os/exec"
 )
 
 type Collector struct {
@@ -22,42 +25,44 @@ func New(cfg *config.Config, log *slog.Logger) *Collector {
 }
 
 func (c *Collector) QueryUserBytes(ctx context.Context, emails []string) (map[string][2]int64, error) {
+	conn, err := grpc.NewClient(c.cfg.Xray.APIServer, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	conn.Connect()
+	defer conn.Close()
+
+	client := statscommand.NewStatsServiceClient(conn)
 	res := make(map[string][2]int64, len(emails))
 	for _, email := range emails {
-		up, err := c.fetch(ctx, email, "uplink")
+		up, dn, err := c.fetch(ctx, client, email)
 		if err != nil {
-			return nil, fmt.Errorf("uplink %s: %w", email, err)
-		}
-		dn, err := c.fetch(ctx, email, "downlink")
-		if err != nil {
-			return nil, fmt.Errorf("downlink %s: %w", email, err)
+			return nil, err
 		}
 		res[email] = [2]int64{up, dn}
 	}
 	return res, nil
 }
 
-func (c *Collector) fetch(ctx context.Context, email, dir string) (int64, error) {
-	name := fmt.Sprintf("user>>>%s>>>traffic>>>%s", email, dir)
-	args := []string{"api", "stats", "--server=" + c.cfg.Xray.APIServer, "--name=" + name}
-	if c.cfg.Xray.StatsResetEachPush {
-		args = append(args, "--reset")
+func (c *Collector) fetch(ctx context.Context, client statscommand.StatsServiceClient, email string) (int64, int64, error) {
+	pattern := fmt.Sprintf("user>>>%s>>>traffic>>>.*", regexp.QuoteMeta(email))
+	resp, err := client.QueryStats(ctx, &statscommand.QueryStatsRequest{
+		Pattern: pattern,
+		Reset_:  c.cfg.Xray.StatsResetEachPush,
+	})
+	if err != nil {
+		return 0, 0, fmt.Errorf("stats query %s: %w", email, err)
 	}
 
-	cmd := exec.CommandContext(ctx, c.cfg.Xray.Binary, args...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-
-	if err := cmd.Run(); err != nil {
-		c.log.Error("xray api stats error", "email", email, "dir", dir, "out", out.String(), "err", err)
-		return 0, err
+	var up, dn int64
+	for _, stat := range resp.GetStat() {
+		name := stat.GetName()
+		switch {
+		case strings.HasSuffix(name, ">>>uplink"):
+			up = stat.GetValue()
+		case strings.HasSuffix(name, ">>>downlink"):
+			dn = stat.GetValue()
+		}
 	}
-
-	txt := strings.TrimSpace(out.String())
-	var value int64
-	if _, err := fmt.Sscan(txt, &value); err != nil {
-		return 0, fmt.Errorf("parse stats: %w", err)
-	}
-	return value, nil
+	return up, dn, nil
 }
