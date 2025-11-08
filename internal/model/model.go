@@ -3,12 +3,12 @@ package model
 import "time"
 
 type State struct {
-	ConfigVersion int64           `json:"config_version"`
-	Clients       []DesiredClient `json:"clients"`
-	Meta          map[string]any  `json:"meta,omitempty"`
+	ConfigVersion int64          `json:"config_version"`
+	Clients       []Client       `json:"clients"`
+	Meta          map[string]any `json:"meta,omitempty"`
 }
 
-type DesiredClient struct {
+type Client struct {
 	Proto    string `json:"proto"`
 	ID       string `json:"id,omitempty"`
 	Password string `json:"password,omitempty"`

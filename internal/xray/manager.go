@@ -29,11 +29,11 @@ func NewManager(cfg *config.Config, log *slog.Logger) *Manager {
 	return &Manager{cfg: cfg, log: log}
 }
 
-func (m *Manager) State(ctx context.Context, current map[string]model.DesiredClient, desired []model.DesiredClient) (bool, error) {
+func (m *Manager) State(ctx context.Context, current map[string]model.Client, desired []model.Client) (bool, error) {
 	return m.applyViaHandler(ctx, current, desired)
 }
 
-func (m *Manager) applyViaHandler(ctx context.Context, current map[string]model.DesiredClient, desired []model.DesiredClient) (bool, error) {
+func (m *Manager) applyViaHandler(ctx context.Context, current map[string]model.Client, desired []model.Client) (bool, error) {
 	adds, removes := diffClients(current, desired)
 	if len(adds) == 0 && len(removes) == 0 {
 		return false, nil
@@ -61,7 +61,7 @@ func (m *Manager) applyViaHandler(ctx context.Context, current map[string]model.
 	return true, nil
 }
 
-func (m *Manager) removeUser(ctx context.Context, client handlerService.HandlerServiceClient, c model.DesiredClient) error {
+func (m *Manager) removeUser(ctx context.Context, client handlerService.HandlerServiceClient, c model.Client) error {
 	tag := m.tagForProto(c.Proto)
 	if tag == "" {
 		return fmt.Errorf("inbound tag for proto %s not configured", c.Proto)
@@ -77,7 +77,7 @@ func (m *Manager) removeUser(ctx context.Context, client handlerService.HandlerS
 	return err
 }
 
-func (m *Manager) addUser(ctx context.Context, client handlerService.HandlerServiceClient, c model.DesiredClient) error {
+func (m *Manager) addUser(ctx context.Context, client handlerService.HandlerServiceClient, c model.Client) error {
 	user, err := buildUser(c)
 	if err != nil {
 		return err
@@ -110,7 +110,7 @@ func (m *Manager) tagForProto(proto string) string {
 	}
 }
 
-func buildUser(c model.DesiredClient) (*protocol.User, error) {
+func buildUser(c model.Client) (*protocol.User, error) {
 	user := &protocol.User{Email: c.Email}
 	switch c.Proto {
 	case "vless":
@@ -125,8 +125,8 @@ func buildUser(c model.DesiredClient) (*protocol.User, error) {
 	return user, nil
 }
 
-func diffClients(current map[string]model.DesiredClient, desired []model.DesiredClient) (adds, removes []model.DesiredClient) {
-	desiredMap := make(map[string]model.DesiredClient, len(desired))
+func diffClients(current map[string]model.Client, desired []model.Client) (adds, removes []model.Client) {
+	desiredMap := make(map[string]model.Client, len(desired))
 	for _, c := range desired {
 		desiredMap[c.Email] = c
 	}
@@ -143,7 +143,7 @@ func diffClients(current map[string]model.DesiredClient, desired []model.Desired
 	return
 }
 
-func equalClient(a, b model.DesiredClient) bool {
+func equalClient(a, b model.Client) bool {
 	return a.Proto == b.Proto && a.ID == b.ID && a.Password == b.Password
 }
 
