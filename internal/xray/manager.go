@@ -187,13 +187,11 @@ func (m *Manager) applyViaHandler(ctx context.Context, current map[string]model.
 		return false, nil
 	}
 
-	dialCtx, cancel := context.WithTimeout(ctx, m.apiTimeout())
-	defer cancel()
-
-	conn, err := grpc.DialContext(dialCtx, m.cfg.Xray.APIServer, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(m.cfg.Xray.APIServer, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return false, err
 	}
+	conn.Connect()
 	defer conn.Close()
 
 	client := handlerService.NewHandlerServiceClient(conn)
