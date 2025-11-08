@@ -18,13 +18,9 @@ type Config struct {
 
 	Xray struct {
 		Binary             string `yaml:"binary"`
-		ConfigPath         string `yaml:"config_path"`
 		APIServer          string `yaml:"api_server"`
 		APITimeoutSec      int    `yaml:"api_timeout_sec"`
-		ReloadCmd          string `yaml:"reload_cmd"`
 		StatsResetEachPush bool   `yaml:"stats_reset_each_push"`
-		ApplyMode          string `yaml:"apply_mode"`
-		LockFile           string `yaml:"lock_file"`
 		InboundTags        struct {
 			VLESS  string `yaml:"vless"`
 			VMESS  string `yaml:"vmess"`
@@ -57,8 +53,8 @@ func Load(path string) (*Config, error) {
 	if cfg.Control.BaseURL == "" || cfg.Control.Token == "" || cfg.Control.ServerSlug == "" {
 		return nil, errors.New("control.base_url/token/server_slug required")
 	}
-	if cfg.Xray.Binary == "" || cfg.Xray.ConfigPath == "" || cfg.Xray.APIServer == "" {
-		return nil, errors.New("xray.binary/config_path/api_server required")
+	if cfg.Xray.Binary == "" || cfg.Xray.APIServer == "" {
+		return nil, errors.New("xray.binary/api_server required")
 	}
 	if cfg.Xray.InboundTags.VLESS == "" || cfg.Xray.InboundTags.VMESS == "" || cfg.Xray.InboundTags.TROJAN == "" {
 		return nil, fmt.Errorf("xray.inbound_tags (vless/vmess/trojan) required")
@@ -75,9 +71,5 @@ func Load(path string) (*Config, error) {
 	if cfg.Xray.APITimeoutSec <= 0 {
 		cfg.Xray.APITimeoutSec = 5
 	}
-	if cfg.Xray.ApplyMode == "" {
-		cfg.Xray.ApplyMode = "config_patch"
-	}
-
 	return &cfg, nil
 }

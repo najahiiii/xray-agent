@@ -6,13 +6,9 @@ control:
 
 xray:
   binary: "/usr/local/bin/xray"
-  config_path: "/etc/xray/config.json"
   api_server: "127.0.0.1:10085"
   api_timeout_sec: 5
-  reload_cmd: "systemctl reload xray" # fallback: restart
   stats_reset_each_push: true
-  apply_mode: "config_patch" # config_patch|handler_service
-  lock_file: "/var/lock/xray-agent.lock"
   inbound_tags:
     vless: "vless-ws"
     vmess: "vmess-ws"
