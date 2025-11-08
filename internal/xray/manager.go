@@ -37,6 +37,9 @@ type Manager struct {
 	cfg      *config.Config
 	log      *slog.Logger
 	lockPath string
+	// needsReload is set when a previous reload attempt failed so that we can retry
+	// even if the config file already matches the desired JSON.
+	needsReload bool
 }
 
 func NewManager(cfg *config.Config, log *slog.Logger) *Manager {
@@ -150,6 +153,12 @@ func (m *Manager) applyViaConfig(ctx context.Context, clients []model.DesiredCli
 
 	newBytes := buf.Bytes()
 	if sameJSON(orig, newBytes) {
+		if m.needsReload {
+			if err := m.reloadWithBackoff(); err != nil {
+				return false, err
+			}
+			m.needsReload = false
+		}
 		return false, nil
 	}
 
@@ -165,8 +174,10 @@ func (m *Manager) applyViaConfig(ctx context.Context, clients []model.DesiredCli
 		return false, err
 	}
 	if err := m.reloadWithBackoff(); err != nil {
+		m.needsReload = true
 		return true, err
 	}
+	m.needsReload = false
 	return true, nil
 }
 
