@@ -125,17 +125,17 @@ func buildUser(c model.Client) (*protocol.User, error) {
 	return user, nil
 }
 
-func diffClients(current map[string]model.Client, desired []model.Client) (adds, removes []model.Client) {
-	desiredMap := make(map[string]model.Client, len(desired))
-	for _, c := range desired {
-		desiredMap[c.Email] = c
+func diffClients(current map[string]model.Client, dc []model.Client) (adds, removes []model.Client) {
+	Map := make(map[string]model.Client, len(dc))
+	for _, c := range dc {
+		Map[c.Email] = c
 	}
 	for email, cur := range current {
-		if want, ok := desiredMap[email]; !ok || !equalClient(cur, want) {
+		if want, ok := Map[email]; !ok || !equalClient(cur, want) {
 			removes = append(removes, cur)
 		}
 	}
-	for _, want := range desired {
+	for _, want := range dc {
 		if cur, ok := current[want.Email]; !ok || !equalClient(cur, want) {
 			adds = append(adds, want)
 		}
