@@ -13,7 +13,10 @@ type Store struct {
 }
 
 func New() *Store {
-	return &Store{clients: map[string]model.DesiredClient{}}
+	return &Store{
+		lastVersion: -1,
+		clients:     map[string]model.DesiredClient{},
+	}
 }
 
 func (s *Store) IsUnchanged(version int64, clients []model.DesiredClient) bool {
