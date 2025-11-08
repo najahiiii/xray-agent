@@ -1,66 +1,117 @@
-# xray-agent (Go)
+# xray-agent
 
-A robust provisioning agent for Xray nodes. It pulls state from a control-plane, manages users through Xray’s HandlerService, collects per-user usage via Xray API/Stats, sends heartbeat & stats back.
+Provisioning/telemetry side for Xray nodes. The agent stays on the same host as Xray, pulls desired state from a control-plane, reconciles users through Xray’s HandlerService gRPC API, streams usage via StatsService, and periodically reports stats + heartbeats upstream.
 
-## Features
+## Highlights
 
-- Multi-protocol aware: VLESS, VMess, Trojan (via separate inbound tags)
-- HandlerService-based client apply (no config file mutations or reloads)
-- Periodic state reconcile, stats push, and heartbeat
-- Per-user usage based on `email` (works across protocols)
-- Simple, dependency-light build
+- **Single source of truth** – Control-plane drives `state` JSON; the agent diffs and applies only the deltas.
+- **HandlerService apply** – Users are added/removed live via gRPC; no config.json juggling or daemon reloads.
+- **Stats over gRPC** – User uplink/downlink counters come from the native StatsService (fast + no subprocesses).
+- **Protocol aware** – VLESS / VMess / Trojan clients mapped to dedicated inbound tags for per-protocol isolation.
+- **Lightweight** – Pure Go binary; depends only on Xray’s gRPC endpoints exposed on `localhost`.
 
-## Config
+## Architecture
 
-See [packaging/config.example.yaml](packaging/config.example.yaml).
+```plaintext
+Control Plane ──HTTP(S)──► Agent ──gRPC──► Xray HandlerService / StatsService
+                                  │
+                                  └─ systemd supervises agent lifecycle
+```
 
-### Client apply path
+1. `state_loop`: poll `/api/agents/{slug}/state`, compare with cached `config_version`, push diffs through HandlerService.
+2. `stats_loop`: query StatsService for per-email counters and POST them back to `/stats`.
+3. `heartbeat_loop`: POST `/heartbeat` so the control-plane can detect liveness.
 
-The agent always reconciles clients via Xray’s gRPC HandlerService, adding/removing users on the fly without touching the JSON config file or reloading the daemon. Ensure HandlerService is enabled and reachable at `xray.api_server`. Deployments assume Xray listens on localhost so this plaintext gRPC link never leaves the host.
+All gRPC traffic is assumed to stay on `localhost`; bind Xray’s API server accordingly.
 
-## Systemd
+## Configuration
 
-See [packaging/xray-agent.service](packaging/xray-agent.service).
+See [packaging/config.example.yaml](packaging/config.example.yaml) for the full schema. High-level knobs:
 
-## Build
+```yaml
+control:
+  base_url: https://panel.example.com
+  token: AGENT_TOKEN
+  server_slug: sg-1
+  tls_insecure: false
+
+xray:
+  binary: /usr/local/bin/xray # still used for stats reset checks if needed
+  api_server: 127.0.0.1:10085 # HandlerService + StatsService listener
+  api_timeout_sec: 5
+  stats_reset_each_push: true # tell StatsService to reset counters after read
+  inbound_tags:
+    vless: vless-ws
+    vmess: vmess-ws
+    trojan: trojan-ws
+
+intervals:
+  state_sec: 15
+  stats_sec: 60
+  heartbeat_sec: 30
+
+logging:
+  level: info
+```
+
+### Client reconciliation
+
+HandlerService must be enabled in your Xray config:
+
+```json
+{
+  "api": {
+    "tag": "xray-api",
+    "services": ["HandlerService", "LoggerService", "StatsService"]
+  },
+  "stats": {}
+}
+```
+
+The agent only needs HandlerService for add/remove and StatsService for counters. Keep the listener on `127.0.0.1` (or a UNIX socket) because the agent currently dials with plaintext credentials.
+
+## Build / Run
 
 ```bash
 go build -o xray-agent ./
+sudo ./xray-agent -config /etc/xray-agent/config.yaml
 ```
 
-## Run
+Systemd unit: [packaging/xray-agent.service](packaging/xray-agent.service).
 
-```bash
-./xray-agent -config /etc/xray-agent/config.yaml
+## Control-plane contract
+
+### `GET /api/agents/{server_slug}/state`
+
+```json
+{
+  "config_version": 12,
+  "clients": [
+    { "proto": "vless", "id": "UUID", "email": "user_1@planA" },
+    { "proto": "vmess", "id": "UUID", "email": "user_2@planB" },
+    { "proto": "trojan", "password": "pass123", "email": "user_3@planC" }
+  ],
+  "meta": { "ws_path": "/ws" }
+}
 ```
 
-## Expected Control-Plane API
+### `POST /api/agents/{server_slug}/stats`
 
-- `GET  /api/agents/{server_slug}/state`
+```json
+{
+  "server_time": "2025-11-07T15:01:00Z",
+  "users": [{ "email": "user_1@planA", "uplink": 123, "downlink": 456 }]
+}
+```
 
-  ```json
-  {
-    "config_version": 12,
-    "clients": [
-      { "proto": "vless", "id": "UUID", "email": "user_1@planA" },
-      { "proto": "vmess", "id": "UUID", "email": "user_2@planB" },
-      { "proto": "trojan", "password": "pass123", "email": "user_3@planC" }
-    ],
-    "meta": { "ws_path": "/ws" }
-  }
-  ```
+### `POST /api/agents/{server_slug}/heartbeat`
 
-- `POST /api/agents/{server_slug}/stats`
+```json
+{ "ok": true }
+```
 
-  ```json
-  {
-    "server_time": "2025-11-07T15:01:00Z",
-    "users": [{ "email": "user_1@planA", "uplink": 123, "downlink": 456 }]
-  }
-  ```
+## Development
 
-- `POST /api/agents/{server_slug}/heartbeat`
-
-  ```json
-  { "ok": true }
-  ```
+- Go ≥ 1.25.3 (module declares 1.25.3; see `go.mod`).
+- Run `go test ./...` before submitting changes.
+- Formatter: `gofmt` (already wired via CI scripts).
