@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -29,7 +30,6 @@ import (
 )
 
 const (
-	applyModeConfig  = "config_patch"
 	applyModeHandler = "handler_service"
 )
 
@@ -134,7 +134,12 @@ func (m *Manager) applyViaConfig(ctx context.Context, clients []model.DesiredCli
 		return false, err
 	}
 
-	tmp := fmt.Sprintf("%s.tmp-%d", cfgPath, time.Now().UnixNano())
+	ext := filepath.Ext(cfgPath)
+	base := strings.TrimSuffix(cfgPath, ext)
+	if ext == "" {
+		ext = ".json"
+	}
+	tmp := fmt.Sprintf("%s.tmp-%d%s", base, time.Now().UnixNano(), ext)
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
