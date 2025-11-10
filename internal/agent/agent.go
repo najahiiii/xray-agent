@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/najahiiii/xray-agent/internal/config"
@@ -102,13 +103,17 @@ func (a *Agent) runStatsLoop(ctx context.Context) {
 				users := make([]model.UserUsage, 0, len(statsMap))
 				for _, email := range emails {
 					if usage, ok := statsMap[email]; ok {
-						users = append(users, model.UserUsage{Email: email, Uplink: usage[0], Downlink: usage[1]})
+						lower := strings.ToLower(email)
+						users = append(users, model.UserUsage{Email: lower, Uplink: usage[0], Downlink: usage[1]})
+						a.log.Debug("usage sample", "email", lower, "uplink", usage[0], "downlink", usage[1])
 					}
 				}
 				if len(users) > 0 {
 					payload := &model.StatsPush{ServerTime: time.Now().UTC(), Users: users}
 					if err := a.ctrl.PostStats(ctx, payload); err != nil {
 						a.log.Warn("post stats", "err", err)
+					} else {
+						a.log.Debug("posted stats", "count", len(users))
 					}
 				}
 			}

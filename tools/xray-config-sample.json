@@ -6,6 +6,7 @@
   },
   "api": {
     "tag": "xray-api",
+    "listen": "127.0.0.1:10085",
     "services": ["HandlerService", "LoggerService", "StatsService"]
   },
   "stats": {},
@@ -71,18 +72,6 @@
         "wsSettings": {
           "path": "trojan-ws"
         }
-      }
-    },
-    {
-      "tag": "xray-api",
-      "listen": "127.0.0.1",
-      "port": 10085,
-      "protocol": "dokodemo-door",
-      "settings": {
-        "address": "127.0.0.1"
-      },
-      "streamSettings": {
-        "network": "tcp"
       }
     }
   ],

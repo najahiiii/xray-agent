@@ -78,6 +78,9 @@ func (m *Manager) removeUser(ctx context.Context, client handlerService.HandlerS
 }
 
 func (m *Manager) addUser(ctx context.Context, client handlerService.HandlerServiceClient, c model.Client) error {
+	// ensure we don't leave stale runtime users (e.g., after agent restart)
+	_ = m.removeUser(ctx, client, c)
+
 	user, err := buildUser(c)
 	if err != nil {
 		return err

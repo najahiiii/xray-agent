@@ -3,8 +3,6 @@ package stats
 import (
 	"context"
 	"fmt"
-	"regexp"
-	"strings"
 
 	"github.com/najahiiii/xray-agent/internal/config"
 
@@ -45,24 +43,33 @@ func (c *Collector) QueryUserBytes(ctx context.Context, emails []string) (map[st
 }
 
 func (c *Collector) fetch(ctx context.Context, client statscommand.StatsServiceClient, email string) (int64, int64, error) {
-	pattern := fmt.Sprintf("user>>>%s>>>traffic>>>.*", regexp.QuoteMeta(email))
+	up, err := c.querySingle(ctx, client, fmt.Sprintf("user>>>%s>>>traffic>>>uplink", email))
+	if err != nil {
+		return 0, 0, err
+	}
+	down, err := c.querySingle(ctx, client, fmt.Sprintf("user>>>%s>>>traffic>>>downlink", email))
+	if err != nil {
+		return 0, 0, err
+	}
+	return up, down, nil
+}
+
+func (c *Collector) querySingle(ctx context.Context, client statscommand.StatsServiceClient, name string) (int64, error) {
+	reset := c.cfg.Xray.StatsResetEachPush
+	if reset {
+		c.log.Debug("stats reset enabled, resetting counters", "name", name)
+	}
 	resp, err := client.QueryStats(ctx, &statscommand.QueryStatsRequest{
-		Pattern: pattern,
-		Reset_:  c.cfg.Xray.StatsResetEachPush,
+		Pattern: name,
+		Reset_:  reset,
 	})
 	if err != nil {
-		return 0, 0, fmt.Errorf("stats query %s: %w", email, err)
+		return 0, fmt.Errorf("stats query %s: %w", name, err)
 	}
-
-	var up, dn int64
 	for _, stat := range resp.GetStat() {
-		name := stat.GetName()
-		switch {
-		case strings.HasSuffix(name, ">>>uplink"):
-			up = stat.GetValue()
-		case strings.HasSuffix(name, ">>>downlink"):
-			dn = stat.GetValue()
+		if stat.GetName() == name {
+			return stat.GetValue(), nil
 		}
 	}
-	return up, dn, nil
+	return 0, nil
 }
