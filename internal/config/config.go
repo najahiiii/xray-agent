@@ -32,6 +32,7 @@ type Config struct {
 		StateSec     int `yaml:"state_sec"`
 		StatsSec     int `yaml:"stats_sec"`
 		HeartbeatSec int `yaml:"heartbeat_sec"`
+		MetricsSec   int `yaml:"metrics_sec"`
 	} `yaml:"intervals"`
 
 	Logging struct {
@@ -67,6 +68,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Intervals.HeartbeatSec == 0 {
 		cfg.Intervals.HeartbeatSec = 30
+	}
+	if cfg.Intervals.MetricsSec == 0 {
+		cfg.Intervals.MetricsSec = 30
 	}
 	if cfg.Xray.APITimeoutSec <= 0 {
 		cfg.Xray.APITimeoutSec = 5

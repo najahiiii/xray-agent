@@ -74,6 +74,7 @@ func newTestConfig(api string) *config.Config {
 	cfg.Intervals.StateSec = 15
 	cfg.Intervals.StatsSec = 60
 	cfg.Intervals.HeartbeatSec = 30
+	cfg.Intervals.MetricsSec = 30
 	return cfg
 }
 
@@ -101,7 +102,7 @@ func TestAgentSyncStateOnce(t *testing.T) {
 	manager := xray.NewManager(cfg, log)
 	collector := stats.New(cfg, log)
 
-	a := New(cfg, log, ctrl, manager, collector)
+	a := New(cfg, log, ctrl, manager, collector, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 

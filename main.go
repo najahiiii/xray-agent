@@ -12,6 +12,7 @@ import (
 	"github.com/najahiiii/xray-agent/internal/config"
 	"github.com/najahiiii/xray-agent/internal/control"
 	"github.com/najahiiii/xray-agent/internal/logger"
+	"github.com/najahiiii/xray-agent/internal/metrics"
 	internalstats "github.com/najahiiii/xray-agent/internal/stats"
 	"github.com/najahiiii/xray-agent/internal/xray"
 )
@@ -31,8 +32,9 @@ func main() {
 	ctrl := control.NewClient(cfg, log)
 	xm := xray.NewManager(cfg, log)
 	stats := internalstats.New(cfg, log)
+	metricCollector := metrics.New(log)
 
-	agt := agent.New(cfg, log, ctrl, xm, stats)
+	agt := agent.New(cfg, log, ctrl, xm, stats, metricCollector)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()

@@ -18,6 +18,7 @@ intervals:
   state_sec: 15
   stats_sec: 60
   heartbeat_sec: 30
+  metrics_sec: 30
 
 logging:
   level: "info" # debug|info|warn|error

@@ -20,7 +20,8 @@ Control Plane ──HTTP(S)──► Agent ──gRPC──► Xray HandlerServi
 
 1. `state_loop`: poll `/api/agents/{slug}/state`, compare with cached `config_version`, push diffs through HandlerService.
 2. `stats_loop`: query StatsService for per-email counters and POST them back to `/stats`.
-3. `heartbeat_loop`: POST `/heartbeat` so the control-plane can detect liveness.
+3. `metrics_loop`: sample host metrics (CPU, RAM, bandwidth) and POST them to `/metrics` for dashboard KPIs.
+4. `heartbeat_loop`: POST `/heartbeat` so the control-plane can detect liveness.
 
 All gRPC traffic is assumed to stay on `localhost`; bind Xray’s API server accordingly.
 
@@ -49,6 +50,7 @@ intervals:
   state_sec: 15
   stats_sec: 60
   heartbeat_sec: 30
+  metrics_sec: 30
 
 logging:
   level: info
@@ -109,6 +111,20 @@ Systemd unit: [packaging/xray-agent.service](packaging/xray-agent.service).
 ```json
 { "ok": true }
 ```
+
+### `POST /api/agents/{server_slug}/metrics`
+
+```json
+{
+  "server_time": "2025-11-07T15:01:00Z",
+  "cpu_percent": 42.5,
+  "memory_percent": 71.2,
+  "bandwidth_up_mbps": 85.1,
+  "bandwidth_down_mbps": 233.7
+}
+```
+
+Fields are optional; send whatever the agent could sample for that interval.
 
 ## Development
 

@@ -80,13 +80,16 @@ func TestManagerState(t *testing.T) {
 	if !changed {
 		t.Fatal("expected change")
 	}
-	if len(fs.ops) != 2 {
-		t.Fatalf("expected 2 operations, got %d", len(fs.ops))
+	if len(fs.ops) != 3 {
+		t.Fatalf("expected 3 operations, got %d", len(fs.ops))
 	}
 	if fs.ops[0].kind != "remove" || fs.ops[0].email != "a@example.com" {
 		t.Fatalf("unexpected ops: %+v", fs.ops)
 	}
-	if fs.ops[1].kind != "add" || fs.ops[1].email != "b@example.com" {
+	if fs.ops[1].kind != "remove" || fs.ops[1].email != "b@example.com" {
+		t.Fatalf("unexpected ops: %+v", fs.ops)
+	}
+	if fs.ops[2].kind != "add" || fs.ops[2].email != "b@example.com" {
 		t.Fatalf("unexpected ops: %+v", fs.ops)
 	}
 }

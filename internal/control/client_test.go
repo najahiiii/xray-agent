@@ -23,6 +23,7 @@ func TestClientStateAndPosts(t *testing.T) {
 	state := model.State{ConfigVersion: 42}
 	statsHit := false
 	hbHit := false
+	metricsHit := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer token" {
 			t.Fatalf("missing auth header: %s", got)
@@ -38,6 +39,12 @@ func TestClientStateAndPosts(t *testing.T) {
 			body, _ := io.ReadAll(r.Body)
 			if !bytes.Contains(body, []byte("users")) {
 				t.Fatalf("stats body %s", string(body))
+			}
+		case "/api/agents/sg/metrics":
+			metricsHit = true
+			body, _ := io.ReadAll(r.Body)
+			if !bytes.Contains(body, []byte("cpu_percent")) {
+				t.Fatalf("metrics body %s", string(body))
 			}
 		case "/api/agents/sg/heartbeat":
 			hbHit = true
@@ -68,10 +75,17 @@ func TestClientStateAndPosts(t *testing.T) {
 	if err := client.PostStats(ctx, &model.StatsPush{}); err != nil {
 		t.Fatalf("PostStats: %v", err)
 	}
+	if err := client.PostMetrics(ctx, &model.ServerMetricPush{CPUPercent: floatPtr(10)}); err != nil {
+		t.Fatalf("PostMetrics: %v", err)
+	}
 	if err := client.Heartbeat(ctx); err != nil {
 		t.Fatalf("Heartbeat: %v", err)
 	}
-	if !statsHit || !hbHit {
-		t.Fatalf("expected stats and heartbeat hits")
+	if !statsHit || !hbHit || !metricsHit {
+		t.Fatalf("expected stats, metrics, and heartbeat hits")
 	}
+}
+
+func floatPtr(v float64) *float64 {
+	return &v
 }
