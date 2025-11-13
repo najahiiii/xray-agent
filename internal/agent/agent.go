@@ -153,7 +153,7 @@ func (a *Agent) runHeartbeatLoop(ctx context.Context) {
 }
 
 func (a *Agent) runMetricsLoop(ctx context.Context) {
-	if a.metrics == nil {
+	if a.metrics == nil && a.stats == nil {
 		return
 	}
 
@@ -165,7 +165,7 @@ func (a *Agent) runMetricsLoop(ctx context.Context) {
 	defer ticker.Stop()
 
 	for {
-		if sample := a.metrics.Sample(ctx); sample != nil {
+		if sample := a.collectMetricsSample(ctx); sample != nil {
 			if err := a.ctrl.PostMetrics(ctx, sample); err != nil {
 				a.log.Warn("post metrics", "err", err)
 			} else {
@@ -174,6 +174,7 @@ func (a *Agent) runMetricsLoop(ctx context.Context) {
 					"mem", sample.MemoryPercent,
 					"up_mbps", sample.BandwidthUpMbps,
 					"down_mbps", sample.BandwidthDownMbps,
+					"sys_stats", sample.XraySysStats != nil,
 				)
 			}
 		}
@@ -184,4 +185,31 @@ func (a *Agent) runMetricsLoop(ctx context.Context) {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (a *Agent) collectMetricsSample(ctx context.Context) *model.ServerMetricPush {
+	var sample *model.ServerMetricPush
+	if a.metrics != nil {
+		sample = a.metrics.Sample(ctx)
+	}
+
+	if sysStats := a.collectXraySysStats(ctx); sysStats != nil {
+		if sample == nil {
+			sample = &model.ServerMetricPush{ServerTime: time.Now().UTC()}
+		}
+		sample.XraySysStats = sysStats
+	}
+	return sample
+}
+
+func (a *Agent) collectXraySysStats(ctx context.Context) *model.XraySysStats {
+	if a.stats == nil {
+		return nil
+	}
+	stats, err := a.stats.SysStats(ctx)
+	if err != nil {
+		a.log.Debug("xray sys stats", "err", err)
+		return nil
+	}
+	return stats
 }

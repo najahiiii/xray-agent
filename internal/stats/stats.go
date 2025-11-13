@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/najahiiii/xray-agent/internal/config"
+	"github.com/najahiiii/xray-agent/internal/model"
 
 	statscommand "github.com/xtls/xray-core/app/stats/command"
 	"google.golang.org/grpc"
@@ -72,4 +73,32 @@ func (c *Collector) querySingle(ctx context.Context, client statscommand.StatsSe
 		}
 	}
 	return 0, nil
+}
+
+func (c *Collector) SysStats(ctx context.Context) (*model.XraySysStats, error) {
+	conn, err := grpc.NewClient(c.cfg.Xray.APIServer, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	conn.Connect()
+	defer conn.Close()
+
+	client := statscommand.NewStatsServiceClient(conn)
+	resp, err := client.GetSysStats(ctx, &statscommand.SysStatsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("sys stats query: %w", err)
+	}
+
+	return &model.XraySysStats{
+		NumGoroutine: resp.GetNumGoroutine(),
+		NumGC:        resp.GetNumGC(),
+		Alloc:        resp.GetAlloc(),
+		TotalAlloc:   resp.GetTotalAlloc(),
+		Sys:          resp.GetSys(),
+		Mallocs:      resp.GetMallocs(),
+		Frees:        resp.GetFrees(),
+		LiveObjects:  resp.GetLiveObjects(),
+		PauseTotalNs: resp.GetPauseTotalNs(),
+		Uptime:       resp.GetUptime(),
+	}, nil
 }
