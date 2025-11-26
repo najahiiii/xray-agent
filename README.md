@@ -100,14 +100,34 @@ HandlerService must be enabled in your Xray config:
 
 The agent only needs HandlerService for add/remove and StatsService for counters. Keep the listener on `127.0.0.1` (or a UNIX socket) because the agent currently dials with plaintext credentials.
 
-## Build / Run
+## CLI / Install
+
+The agent binary exposes subcommands (default path `/etc/xray-agent/config.yaml`):
+
+- `run` — start the agent; auto-installs Xray-core if missing. Flags: `--config`, `--core-version`, `--github-token`.
+- `setup` — install config (from embedded sample), binary to `/usr/local/bin/xray-agent`, and systemd unit to `/usr/lib/systemd/system/xray-agent.service`. Flags: `--config`, `--service`, `--bin`, `--control-base-url`, `--control-token`, `--control-server-slug`, `--control-tls-insecure`, `--github-token`.
+- `update-config` — update control/github fields and restart agent. Flags: `--config`, `--control-base-url`, `--control-token`, `--control-server-slug`, `--control-tls-insecure`, `--github-token`, `--restart`.
+- `core` — manage Xray-core install. Flags: `--action check|install`, `--version`, `--github-token`, `--config` (to read defaults).
+- `version` — show agent version (from embedded `version` file) and commit (from build info).
+
+### Quick install
 
 ```bash
 go build -o xray-agent ./
-sudo ./xray-agent -config /etc/xray-agent/config.yaml
+sudo ./xray-agent setup \
+  --control-base-url https://panel.example.com \
+  --control-token AGENT_TOKEN \
+  --control-server-slug sg-1 \
+  --github-token GITHUB_PAT
 ```
 
-Systemd unit: [packaging/xray-agent.service](packaging/xray-agent.service).
+Then start normally:
+
+```bash
+sudo ./xray-agent run --config /etc/xray-agent/config.yaml
+```
+
+Systemd unit (installed by setup subcommand): `/usr/lib/systemd/system/xray-agent.service` with `ExecStart=/usr/local/bin/xray-agent run --config /etc/xray-agent/config.yaml`.
 
 ## Control-panel contract
 
@@ -159,3 +179,9 @@ Fields are optional; send whatever the agent could sample for that interval.
 - Go ≥ 1.25.3 (module declares 1.25.3; see `go.mod`).
 - Run `go test ./...` before submitting changes.
 - Formatter: `gofmt` (already wired via CI scripts).
+
+## License
+
+GNU General Public License v3.0 or later
+
+See [COPYING](COPYING) to see the full text.
