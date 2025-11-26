@@ -1,38 +1,22 @@
 {
-  "log": {
-    "access": "/var/log/xray/access.log",
-    "error": "/var/log/xray/error.log",
-    "loglevel": "warning"
-  },
   "api": {
-    "tag": "xray-api",
-    "listen": "127.0.0.1:10085",
-    "services": ["HandlerService", "LoggerService", "StatsService"]
-  },
-  "stats": {},
-  "policy": {
-    "levels": {
-      "0": {
-        "statsUserUplink": true,
-        "statsUserDownlink": true
-      }
-    },
-    "system": {
-      "statsInboundDownlink": true,
-      "statsInboundUplink": true,
-      "statsOutboundDownlink": true,
-      "statsOutboundUplink": true
-    }
+    "listen": "127.0.0.1:8080",
+    "services": [
+      "HandlerService",
+      "LoggerService",
+      "StatsService"
+    ],
+    "tag": "xray-api"
   },
   "inbounds": [
     {
-      "tag": "vless-ws",
       "listen": "127.0.0.1",
       "port": 10001,
       "protocol": "vless",
       "settings": {
+        "clients": [],
         "decryption": "none",
-        "clients": []
+        "fallbacks": []
       },
       "streamSettings": {
         "network": "ws",
@@ -40,10 +24,10 @@
         "wsSettings": {
           "path": "vless-ws"
         }
-      }
+      },
+      "tag": "vless-ws"
     },
     {
-      "tag": "vmess-ws",
       "listen": "127.0.0.1",
       "port": 10002,
       "protocol": "vmess",
@@ -56,10 +40,10 @@
         "wsSettings": {
           "path": "vmess-ws"
         }
-      }
+      },
+      "tag": "vmess-ws"
     },
     {
-      "tag": "trojan-ws",
       "listen": "127.0.0.1",
       "port": 10003,
       "protocol": "trojan",
@@ -72,13 +56,36 @@
         "wsSettings": {
           "path": "trojan-ws"
         }
-      }
+      },
+      "tag": "trojan-ws"
     }
   ],
+  "log": {
+    "access": "/var/log/xray/access.log",
+    "error": "/var/log/xray/error.log",
+    "loglevel": "warning"
+  },
   "outbounds": [
     {
       "protocol": "freedom",
       "tag": "direct"
     }
-  ]
+  ],
+  "stats": {},
+  "policy": {
+    "levels": {
+      "0": {
+        "statsUserDownlink": true,
+        "statsUserUplink": true,
+        "statsInTag": false,
+        "statsOutTag": false
+      }
+    },
+    "system": {
+      "statsInboundDownlink": false,
+      "statsInboundUplink": false,
+      "statsOutboundDownlink": false,
+      "statsOutboundUplink": false
+    }
+  }
 }

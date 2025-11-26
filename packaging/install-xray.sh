@@ -19,6 +19,8 @@ BIN_DIR="/usr/local/bin"
 CFG_PATH="/etc/xray/config.json"
 VERSION=""
 ARCH=""
+SAMPLE_CFG_URL="https://gist.githubusercontent.com/najahiiii/04e3a094517f2a56c04263afdf60805f/raw/73a6115d6b2f34f0de918a32ac582661fce69d75/xray-config.json"
+SERVICE_URL="https://gist.githubusercontent.com/najahiiii/04e3a094517f2a56c04263afdf60805f/raw/73a6115d6b2f34f0de918a32ac582661fce69d75/xray.service"
 
 log() { echo -e "[+] $*"; }
 err() { echo -e "[!] $*" >&2; }
@@ -132,125 +134,23 @@ install_binary_and_data() {
 
 write_sample_config_if_absent() {
   if [[ -f "$CFG_PATH" ]]; then return; fi
-  cat >"$CFG_PATH" <<'JSON'
-{
-  "log": {
-    "access": "/var/log/xray/access.log",
-    "error": "/var/log/xray/error.log",
-    "loglevel": "warning"
-  },
-  "api": {
-    "tag": "xray-api",
-    "services": ["HandlerService", "LoggerService", "StatsService"]
-  },
-  "stats": {},
-  "policy": {
-    "levels": {
-      "0": {
-        "statsUserUplink": true,
-        "statsUserDownlink": true
-      }
-    },
-    "system": {
-      "statsInboundDownlink": true,
-      "statsInboundUplink": true,
-      "statsOutboundDownlink": true,
-      "statsOutboundUplink": true
-    }
-  },
-  "inbounds": [
-    {
-      "tag": "vless-ws",
-      "listen": "127.0.0.1",
-      "port": 10001,
-      "protocol": "vless",
-      "settings": {
-        "decryption": "none",
-        "clients": []
-      },
-      "streamSettings": {
-        "network": "ws",
-        "security": "none",
-        "wsSettings": {
-          "path": "vless-ws"
-        }
-      }
-    },
-    {
-      "tag": "vmess-ws",
-      "listen": "127.0.0.1",
-      "port": 10002,
-      "protocol": "vmess",
-      "settings": {
-        "clients": []
-      },
-      "streamSettings": {
-        "network": "ws",
-        "security": "none",
-        "wsSettings": {
-          "path": "vmess-ws"
-        }
-      }
-    },
-    {
-      "tag": "trojan-ws",
-      "listen": "127.0.0.1",
-      "port": 10003,
-      "protocol": "trojan",
-      "settings": {
-        "clients": []
-      },
-      "streamSettings": {
-        "network": "ws",
-        "security": "none",
-        "wsSettings": {
-          "path": "trojan-ws"
-        }
-      }
-    },
-    {
-      "tag": "xray-api",
-      "listen": "127.0.0.1",
-      "port": 10085,
-      "protocol": "dokodemo-door",
-      "settings": {
-        "address": "127.0.0.1"
-      },
-      "streamSettings": {
-        "network": "tcp"
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "protocol": "freedom",
-      "tag": "direct"
-    }
-  ]
-}
-JSON
+  mkdir -p "$(dirname "$CFG_PATH")"
+  log "Downloading sample config from gist"
+  if ! curl -fsSL -o "$CFG_PATH" "$SAMPLE_CFG_URL"; then
+    err "Failed to download sample config from $SAMPLE_CFG_URL"
+    exit 1
+  fi
+  chmod 0644 "$CFG_PATH"
 }
 
 install_systemd_service() {
   local svc="/etc/systemd/system/xray.service"
-  cat >"$svc" <<'UNIT'
-[Unit]
-Description=Xray Core Service
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-User=root
-Group=root
-ExecStartPre=/usr/local/bin/xray -test -config /etc/xray/config.json
-ExecStart=/usr/local/bin/xray -config /etc/xray/config.json
-Restart=on-failure
-RestartSec=3
-LimitNOFILE=1048576
-
-[Install]
-WantedBy=multi-user.target
-UNIT
+  mkdir -p "$(dirname "$svc")"
+  log "Downloading systemd service from gist"
+  if ! curl -fsSL -o "$svc" "$SERVICE_URL"; then
+    err "Failed to download service unit from $SERVICE_URL"
+    exit 1
+  fi
   systemctl daemon-reload
   systemctl enable --now xray
 }

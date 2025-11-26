@@ -1,0 +1,16 @@
+[Unit]
+Description=Xray Core Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=root
+Group=root
+ExecStartPre=/usr/local/bin/xray -test -config /etc/xray/config.json
+ExecStart=/usr/local/bin/xray -config /etc/xray/config.json
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
