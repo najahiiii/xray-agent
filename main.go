@@ -115,7 +115,18 @@ func setupCommand(args []string) {
 	cfgPath := fs.String("config", "", "config path (default /etc/xray-agent/config.yaml)")
 	servicePath := fs.String("service", "", "systemd service path (default /usr/lib/systemd/system/xray-agent.service)")
 	binPath := fs.String("bin", "", "binary install path (default /usr/local/bin/xray-agent)")
+	ghToken := fs.String("github-token", "", "GitHub token to save into config (optional)")
+	ctlBase := fs.String("control-base-url", "", "control base URL (optional)")
+	ctlToken := fs.String("control-token", "", "control bearer token (optional)")
+	ctlSlug := fs.String("control-server-slug", "", "control server slug (optional)")
+	ctlTLS := fs.String("control-tls-insecure", "", "control TLS insecure (true/false, optional)")
 	fs.Parse(args)
+
+	tlsPtr, err := parseBool(*ctlTLS, "control-tls-insecure")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	log := logger.New("info")
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -125,6 +136,11 @@ func setupCommand(args []string) {
 		ConfigPath:  *cfgPath,
 		ServicePath: *servicePath,
 		BinPath:     *binPath,
+		GitHubToken: *ghToken,
+		BaseURL:     *ctlBase,
+		Token:       *ctlToken,
+		ServerSlug:  *ctlSlug,
+		TLSInsecure: tlsPtr,
 		Logger:      log,
 	}
 	if err := agentsetup.Install(ctx, opts); err != nil {
@@ -144,26 +160,17 @@ func updateConfigCommand(args []string) {
 	restart := fs.Bool("restart", true, "restart xray-agent service after update")
 	fs.Parse(args)
 
-	var tlsPtr *bool
-	if *ctlTLS != "" {
-		switch *ctlTLS {
-		case "true", "1", "yes":
-			v := true
-			tlsPtr = &v
-		case "false", "0", "no":
-			v := false
-			tlsPtr = &v
-		default:
-			fmt.Fprintf(os.Stderr, "invalid control-tls-insecure value: %s (use true/false)\n", *ctlTLS)
-			os.Exit(1)
-		}
+	tlsPtr, err := parseBool(*ctlTLS, "control-tls-insecure")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	log := logger.New("info")
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	err := agentsetup.UpdateControl(ctx, agentsetup.UpdateControlOptions{
+	err = agentsetup.UpdateControl(ctx, agentsetup.UpdateControlOptions{
 		ConfigPath:  *cfgPath,
 		BaseURL:     *ctlBase,
 		Token:       *ctlToken,
@@ -285,7 +292,7 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  xray-agent run --config /etc/xray-agent/config.yaml")
-	fmt.Println("  xray-agent setup")
+	fmt.Println("  xray-agent setup --control-base-url https://panel --control-token TOKEN --control-server-slug slug --github-token ghp_xxx")
 	fmt.Println("  xray-agent update-config --control-base-url https://panel --control-token TOKEN --control-server-slug slug")
 	fmt.Println("  xray-agent core --action install --version v25.10.15")
 	fmt.Println()
@@ -305,4 +312,20 @@ func buildCommit() string {
 		}
 	}
 	return "unknown"
+}
+
+func parseBool(value string, field string) (*bool, error) {
+	if value == "" {
+		return nil, nil
+	}
+	switch strings.ToLower(value) {
+	case "true", "1", "yes":
+		v := true
+		return &v, nil
+	case "false", "0", "no":
+		v := false
+		return &v, nil
+	default:
+		return nil, fmt.Errorf("invalid %s value: %s (use true/false)", field, value)
+	}
 }

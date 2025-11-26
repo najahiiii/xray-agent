@@ -31,6 +31,11 @@ type Options struct {
 	ConfigPath  string
 	ServicePath string
 	BinPath     string
+	GitHubToken string
+	BaseURL     string
+	Token       string
+	ServerSlug  string
+	TLSInsecure *bool
 	Logger      *slog.Logger
 }
 
@@ -51,17 +56,8 @@ func Install(ctx context.Context, opts Options) error {
 	opts.withDefaults()
 	log := opts.Logger
 
-	if _, err := os.Stat(opts.ConfigPath); os.IsNotExist(err) {
-		if log != nil {
-			log.Info("writing agent config", "path", opts.ConfigPath)
-		}
-		if err := writeFile(opts.ConfigPath, embeddedConfig, 0o600); err != nil {
-			return fmt.Errorf("write config: %w", err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("check config: %w", err)
-	} else if log != nil {
-		log.Info("config already exists", "path", opts.ConfigPath)
+	if err := ensureConfig(opts); err != nil {
+		return err
 	}
 
 	if err := installBinary(opts); err != nil {
@@ -85,6 +81,66 @@ func Install(ctx context.Context, opts Options) error {
 		log.Info("agent service installed and started")
 	}
 	return nil
+}
+
+func ensureConfig(opts Options) error {
+	log := opts.Logger
+	// If config exists, update GitHub token/control fields if provided
+	if _, err := os.Stat(opts.ConfigPath); err == nil {
+		if err := updateConfigFields(opts); err != nil {
+			return err
+		}
+		if log != nil {
+			log.Info("config already exists", "path", opts.ConfigPath)
+		}
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("check config: %w", err)
+	}
+
+	if log != nil {
+		log.Info("writing agent config", "path", opts.ConfigPath)
+	}
+	cfgData := embeddedConfig
+	var cfg config.Config
+	if err := yaml.Unmarshal(embeddedConfig, &cfg); err == nil {
+		applyOptionalFields(&cfg, opts)
+		if out, err := yaml.Marshal(&cfg); err == nil {
+			cfgData = out
+		}
+	}
+	return writeFile(opts.ConfigPath, cfgData, 0o600)
+}
+
+func updateConfigFields(opts Options) error {
+	cfg, err := config.Load(opts.ConfigPath)
+	if err != nil {
+		return fmt.Errorf("load existing config: %w", err)
+	}
+	applyOptionalFields(cfg, opts)
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	return writeFile(opts.ConfigPath, out, 0o600)
+}
+
+func applyOptionalFields(cfg *config.Config, opts Options) {
+	if opts.GitHubToken != "" {
+		cfg.GitHub.Token = opts.GitHubToken
+	}
+	if opts.BaseURL != "" {
+		cfg.Control.BaseURL = opts.BaseURL
+	}
+	if opts.Token != "" {
+		cfg.Control.Token = opts.Token
+	}
+	if opts.ServerSlug != "" {
+		cfg.Control.ServerSlug = opts.ServerSlug
+	}
+	if opts.TLSInsecure != nil {
+		cfg.Control.TLSInsecure = *opts.TLSInsecure
+	}
 }
 
 func writeFile(path string, data []byte, perm os.FileMode) error {
