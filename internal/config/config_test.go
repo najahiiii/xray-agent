@@ -14,7 +14,6 @@ control:
   tls_insecure: false
 
 xray:
-  binary: "/usr/bin/xray"
   api_server: "127.0.0.1:10085"
   version: ""
   inbound_tags:

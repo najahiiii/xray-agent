@@ -26,7 +26,6 @@ type Config struct {
 	} `yaml:"control"`
 
 	Xray struct {
-		Binary             string `yaml:"binary"`
 		Version            string `yaml:"version"`
 		APIServer          string `yaml:"api_server"`
 		APITimeoutSec      int    `yaml:"api_timeout_sec"`
@@ -87,9 +86,6 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Xray.Version == "" {
 		cfg.Xray.Version = DefaultXrayVersion
-	}
-	if cfg.Xray.Binary == "" {
-		cfg.Xray.Binary = "/usr/local/bin/xray"
 	}
 	return &cfg, nil
 }

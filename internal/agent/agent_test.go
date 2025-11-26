@@ -65,7 +65,6 @@ func newTestConfig(api string) *config.Config {
 	cfg.Control.BaseURL = "http://example"
 	cfg.Control.Token = "t"
 	cfg.Control.ServerSlug = "sg"
-	cfg.Xray.Binary = "/usr/bin/xray"
 	cfg.Xray.APIServer = api
 	cfg.Xray.APITimeoutSec = 1
 	cfg.Xray.InboundTags.VLESS = "v"

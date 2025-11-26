@@ -5,8 +5,8 @@ control:
   tls_insecure: false
 
 xray:
-  api_server: "127.0.0.1:10085"
   version: "25.10.15"
+  api_server: "127.0.0.1:10085"
   api_timeout_sec: 5
   stats_reset_each_push: true
   inbound_tags:
