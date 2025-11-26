@@ -161,7 +161,7 @@ write_sample_config_if_absent() {
 }
 
 install_systemd_service() {
-  local svc="/etc/systemd/system/xray.service"
+  local svc="/usr/lib/systemd/system/xray.service"
   mkdir -p "$(dirname "$svc")"
   log "Downloading systemd service from gist"
   if ! curl -fsSL -o "$svc" "$SERVICE_URL"; then

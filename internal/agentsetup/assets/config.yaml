@@ -1,0 +1,24 @@
+control:
+  base_url: "https://panel.example.com"
+  token: "AGENT_BEARER_TOKEN"
+  server_slug: "server-slug"
+  tls_insecure: false
+
+xray:
+  api_server: "127.0.0.1:10085"
+  version: "25.10.15"
+  api_timeout_sec: 5
+  stats_reset_each_push: true
+  inbound_tags:
+    vless: "vless-ws"
+    vmess: "vmess-ws"
+    trojan: "trojan-ws"
+
+intervals:
+  state_sec: 15
+  stats_sec: 60
+  heartbeat_sec: 30
+  metrics_sec: 30
+
+logging:
+  level: "info"

@@ -25,7 +25,7 @@ const (
 	defaultRepo        = "XTLS/Xray-core"
 	defaultBinDir      = "/usr/local/bin"
 	defaultConfigPath  = "/etc/xray/config.json"
-	defaultServicePath = "/etc/systemd/system/xray.service"
+	defaultServicePath = "/usr/lib/systemd/system/xray.service"
 	defaultShareDir    = "/usr/local/share/xray"
 )
 

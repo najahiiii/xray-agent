@@ -11,6 +11,7 @@ import (
 	"log/slog"
 
 	"github.com/najahiiii/xray-agent/internal/agent"
+	"github.com/najahiiii/xray-agent/internal/agentsetup"
 	"github.com/najahiiii/xray-agent/internal/config"
 	"github.com/najahiiii/xray-agent/internal/control"
 	"github.com/najahiiii/xray-agent/internal/logger"
@@ -24,15 +25,58 @@ func main() {
 	var cfgPath string
 	var coreMode string
 	var coreVersion string
+	var doSetup bool
+	var doConfigUpdate bool
+	var ctlBaseURL string
+	var ctlToken string
+	var ctlServerSlug string
+	var ctlTLSInsecure string
 
 	flag.StringVar(&cfgPath, "config", "/etc/xray-agent/config.yaml", "path to config.yaml")
 	flag.StringVar(&coreMode, "core", "", "manage xray-core: check|install (empty to run agent)")
 	flag.StringVar(&coreVersion, "core-version", "", "xray-core target version (default latest)")
+	flag.BoolVar(&doSetup, "setup", false, "install agent config and systemd unit, then exit")
+	flag.BoolVar(&doConfigUpdate, "update-config", false, "update agent control config and exit")
+	flag.StringVar(&ctlBaseURL, "control-base-url", "", "control base URL (for update-config)")
+	flag.StringVar(&ctlToken, "control-token", "", "control bearer token (for update-config)")
+	flag.StringVar(&ctlServerSlug, "control-server-slug", "", "control server slug (for update-config)")
+	flag.StringVar(&ctlTLSInsecure, "control-tls-insecure", "false", "control TLS insecure (true/false) (for update-config)")
 	flag.Parse()
 
 	defaultCoreVersion := coreVersion
 	if defaultCoreVersion == "" {
 		defaultCoreVersion = config.DefaultXrayVersion
+	}
+
+	if doConfigUpdate {
+		log := logger.New("info")
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+
+		var tlsPtr *bool
+		switch ctlTLSInsecure {
+		case "true", "1", "yes":
+			v := true
+			tlsPtr = &v
+		case "false", "0", "no":
+			v := false
+			tlsPtr = &v
+		default:
+			fmt.Fprintf(os.Stderr, "invalid control-tls-insecure value: %s (use true/false)\n", ctlTLSInsecure)
+			os.Exit(1)
+		}
+		if err := agentsetup.UpdateControl(ctx, agentsetup.UpdateControlOptions{
+			ConfigPath:  cfgPath,
+			BaseURL:     ctlBaseURL,
+			Token:       ctlToken,
+			ServerSlug:  ctlServerSlug,
+			TLSInsecure: tlsPtr,
+			Logger:      log,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "update config failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	if coreMode != "" {
@@ -65,6 +109,17 @@ func main() {
 			fmt.Fprintf(os.Stderr, "unknown core mode: %s\n", coreMode)
 			os.Exit(1)
 		}
+	}
+
+	if doSetup {
+		log := logger.New("info")
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+		if err := agentsetup.Install(ctx, agentsetup.Options{Logger: log}); err != nil {
+			fmt.Fprintf(os.Stderr, "agent setup failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	cfg, err := config.Load(cfgPath)
