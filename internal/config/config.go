@@ -8,6 +8,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	DefaultXrayVersion          = "25.10.15"
+	DefaultStateIntervalSec     = 15
+	DefaultStatsIntervalSec     = 60
+	DefaultHeartbeatIntervalSec = 30
+	DefaultMetricsIntervalSec   = 30
+	DefaultAPITimeoutSec        = 5
+)
+
 type Config struct {
 	Control struct {
 		BaseURL     string `yaml:"base_url"`
@@ -18,6 +27,7 @@ type Config struct {
 
 	Xray struct {
 		Binary             string `yaml:"binary"`
+		Version            string `yaml:"version"`
 		APIServer          string `yaml:"api_server"`
 		APITimeoutSec      int    `yaml:"api_timeout_sec"`
 		StatsResetEachPush bool   `yaml:"stats_reset_each_push"`
@@ -54,26 +64,32 @@ func Load(path string) (*Config, error) {
 	if cfg.Control.BaseURL == "" || cfg.Control.Token == "" || cfg.Control.ServerSlug == "" {
 		return nil, errors.New("control.base_url/token/server_slug required")
 	}
-	if cfg.Xray.Binary == "" || cfg.Xray.APIServer == "" {
-		return nil, errors.New("xray.binary/api_server required")
+	if cfg.Xray.APIServer == "" {
+		return nil, errors.New("xray.api_server required")
 	}
 	if cfg.Xray.InboundTags.VLESS == "" || cfg.Xray.InboundTags.VMESS == "" || cfg.Xray.InboundTags.TROJAN == "" {
 		return nil, fmt.Errorf("xray.inbound_tags (vless/vmess/trojan) required")
 	}
 	if cfg.Intervals.StateSec == 0 {
-		cfg.Intervals.StateSec = 15
+		cfg.Intervals.StateSec = DefaultStateIntervalSec
 	}
 	if cfg.Intervals.StatsSec == 0 {
-		cfg.Intervals.StatsSec = 60
+		cfg.Intervals.StatsSec = DefaultStatsIntervalSec
 	}
 	if cfg.Intervals.HeartbeatSec == 0 {
-		cfg.Intervals.HeartbeatSec = 30
+		cfg.Intervals.HeartbeatSec = DefaultHeartbeatIntervalSec
 	}
 	if cfg.Intervals.MetricsSec == 0 {
-		cfg.Intervals.MetricsSec = 30
+		cfg.Intervals.MetricsSec = DefaultMetricsIntervalSec
 	}
 	if cfg.Xray.APITimeoutSec <= 0 {
-		cfg.Xray.APITimeoutSec = 5
+		cfg.Xray.APITimeoutSec = DefaultAPITimeoutSec
+	}
+	if cfg.Xray.Version == "" {
+		cfg.Xray.Version = DefaultXrayVersion
+	}
+	if cfg.Xray.Binary == "" {
+		cfg.Xray.Binary = "/usr/local/bin/xray"
 	}
 	return &cfg, nil
 }

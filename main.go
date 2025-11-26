@@ -30,13 +30,18 @@ func main() {
 	flag.StringVar(&coreVersion, "core-version", "", "xray-core target version (default latest)")
 	flag.Parse()
 
+	defaultCoreVersion := coreVersion
+	if defaultCoreVersion == "" {
+		defaultCoreVersion = config.DefaultXrayVersion
+	}
+
 	if coreMode != "" {
 		log := logger.New("info")
 		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer cancel()
 
 		opts := xraycore.Options{
-			Version: coreVersion,
+			Version: defaultCoreVersion,
 			Logger:  log,
 		}
 		switch coreMode {
@@ -72,7 +77,15 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	ensureCore(ctx, log, coreVersion)
+	targetCoreVersion := coreVersion
+	if targetCoreVersion == "" {
+		targetCoreVersion = cfg.Xray.Version
+		if targetCoreVersion == "" {
+			targetCoreVersion = config.DefaultXrayVersion
+		}
+	}
+
+	ensureCore(ctx, log, targetCoreVersion)
 
 	ctrl := control.NewClient(cfg, log)
 	xm := xray.NewManager(cfg, log)
@@ -88,6 +101,9 @@ func main() {
 }
 
 func ensureCore(ctx context.Context, log *slog.Logger, version string) {
+	if version == "" {
+		version = config.DefaultXrayVersion
+	}
 	opts := xraycore.Options{
 		Version: version,
 		Logger:  log,

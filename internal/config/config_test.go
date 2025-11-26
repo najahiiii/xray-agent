@@ -16,6 +16,7 @@ control:
 xray:
   binary: "/usr/bin/xray"
   api_server: "127.0.0.1:10085"
+  version: ""
   inbound_tags:
     vless: "vless"
     vmess: "vmess"
@@ -50,6 +51,9 @@ intervals:
 	}
 	if cfg.Xray.APITimeoutSec != 5 {
 		t.Fatalf("expected default API timeout, got %d", cfg.Xray.APITimeoutSec)
+	}
+	if cfg.Xray.Version != DefaultXrayVersion {
+		t.Fatalf("expected default xray version %s, got %s", DefaultXrayVersion, cfg.Xray.Version)
 	}
 }
 
