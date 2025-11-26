@@ -217,8 +217,10 @@ type releaseInfo struct {
 func fetchRelease(ctx context.Context, opts Options) (*releaseInfo, string, error) {
 	client := &http.Client{Timeout: 20 * time.Second}
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", opts.Repo)
+	tag := ""
 	if opts.Version != "" {
-		url = fmt.Sprintf("https://api.github.com/repos/%s/releases/tags/%s", opts.Repo, opts.Version)
+		tag = ensureTagPrefix(opts.Version)
+		url = fmt.Sprintf("https://api.github.com/repos/%s/releases/tags/%s", opts.Repo, tag)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -245,8 +247,8 @@ func fetchRelease(ctx context.Context, opts Options) (*releaseInfo, string, erro
 		return nil, "", err
 	}
 	version := rel.TagName
-	if opts.Version != "" {
-		version = opts.Version
+	if tag != "" {
+		version = tag
 	}
 	return &rel, version, nil
 }
@@ -455,4 +457,15 @@ func installedVersion(ctx context.Context) string {
 
 func normalizeVersion(v string) string {
 	return strings.TrimPrefix(strings.TrimSpace(v), "v")
+}
+
+func ensureTagPrefix(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return v
+	}
+	if strings.HasPrefix(v, "v") {
+		return v
+	}
+	return "v" + v
 }

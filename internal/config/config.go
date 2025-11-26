@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	DefaultXrayVersion          = "25.10.15"
+	DefaultXrayVersion          = "v25.10.15"
 	DefaultStateIntervalSec     = 15
 	DefaultStatsIntervalSec     = 60
 	DefaultHeartbeatIntervalSec = 30
