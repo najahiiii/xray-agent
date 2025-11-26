@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
+	"strings"
 	"syscall"
 
+	_ "embed"
 	"log/slog"
 
 	"github.com/najahiiii/xray-agent/internal/agent"
@@ -22,6 +25,9 @@ import (
 )
 
 const defaultConfigPath = "/etc/xray-agent/config.yaml"
+
+//go:embed version
+var embeddedVersion string
 
 func main() {
 	args := os.Args[1:]
@@ -39,6 +45,8 @@ func main() {
 		updateConfigCommand(args[1:])
 	case "run":
 		runAgent(args[1:])
+	case "version", "-v", "--version":
+		printVersion()
 	default:
 		printHelp()
 	}
@@ -273,10 +281,28 @@ func printHelp() {
 	fmt.Println("  setup          Install config/binary/systemd unit")
 	fmt.Println("  update-config  Update control/github config and restart agent")
 	fmt.Println("  core           Manage xray-core (check/install)")
+	fmt.Println("  version        Show agent version and commit")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  xray-agent run --config /etc/xray-agent/config.yaml")
 	fmt.Println("  xray-agent setup")
 	fmt.Println("  xray-agent update-config --control-base-url https://panel --control-token TOKEN --control-server-slug slug")
 	fmt.Println("  xray-agent core --action install --version v25.10.15")
+	fmt.Println()
+	printVersion()
+}
+
+func printVersion() {
+	fmt.Printf("xray-agent %s (commit %s)\n", strings.TrimSpace(embeddedVersion), buildCommit())
+}
+
+func buildCommit() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" && s.Value != "" {
+				return s.Value
+			}
+		}
+	}
+	return "unknown"
 }
