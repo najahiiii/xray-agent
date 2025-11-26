@@ -17,6 +17,7 @@ import (
 const (
 	defaultConfigPath  = "/etc/xray-agent/config.yaml"
 	defaultServicePath = "/usr/lib/systemd/system/xray-agent.service"
+	defaultBinPath     = "/usr/local/bin/xray-agent"
 )
 
 //go:embed assets/config.yaml
@@ -28,6 +29,7 @@ var embeddedService []byte
 type Options struct {
 	ConfigPath  string
 	ServicePath string
+	BinPath     string
 	Logger      *slog.Logger
 }
 
@@ -37,6 +39,9 @@ func (o *Options) withDefaults() {
 	}
 	if o.ServicePath == "" {
 		o.ServicePath = defaultServicePath
+	}
+	if o.BinPath == "" {
+		o.BinPath = defaultBinPath
 	}
 }
 
@@ -56,6 +61,10 @@ func Install(ctx context.Context, opts Options) error {
 		return fmt.Errorf("check config: %w", err)
 	} else if log != nil {
 		log.Info("config already exists", "path", opts.ConfigPath)
+	}
+
+	if err := installBinary(opts); err != nil {
+		return err
 	}
 
 	if log != nil {
@@ -89,6 +98,24 @@ func runCmd(ctx context.Context, name string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func installBinary(opts Options) error {
+	src, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("locate executable: %w", err)
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("read executable: %w", err)
+	}
+	if err := writeFile(opts.BinPath, data, 0o755); err != nil {
+		return fmt.Errorf("install binary: %w", err)
+	}
+	if opts.Logger != nil {
+		opts.Logger.Info("installed agent binary", "from", src, "to", opts.BinPath)
+	}
+	return nil
 }
 
 type UpdateControlOptions struct {
