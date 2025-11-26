@@ -19,6 +19,7 @@ BIN_DIR="/usr/local/bin"
 CFG_PATH="/etc/xray/config.json"
 VERSION=""
 ARCH=""
+MODE="install"
 SAMPLE_CFG_URL="https://gist.githubusercontent.com/najahiiii/04e3a094517f2a56c04263afdf60805f/raw/73a6115d6b2f34f0de918a32ac582661fce69d75/xray-config.json"
 SERVICE_URL="https://gist.githubusercontent.com/najahiiii/04e3a094517f2a56c04263afdf60805f/raw/73a6115d6b2f34f0de918a32ac582661fce69d75/xray.service"
 
@@ -62,6 +63,8 @@ parse_args() {
       --bin-dir) BIN_DIR="$2"; shift 2;;
       --config)  CFG_PATH="$2"; shift 2;;
       --arch)    ARCH="$2"; shift 2;;
+      --check-update) MODE="check"; shift;;
+      --install) MODE="install"; shift;;
       *) err "Unknown arg: $1"; exit 1;;
     esac
   done
@@ -103,6 +106,20 @@ pick_asset_urls() {
   if [[ -z "$ZIP_URL" || -z "$DGST_URL" ]]; then
     err "Cannot find asset for arch=$arch. Check release page."; exit 1
   fi
+}
+
+installed_version() {
+  if ! command -v xray >/dev/null 2>&1; then
+    echo ""
+    return
+  fi
+  xray -version 2>/dev/null | awk 'NR==1 {print $2}'
+}
+
+normalize_version() {
+  local v="$1"
+  v="${v#v}"
+  echo "$v"
 }
 
 verify_sha256() {
@@ -162,6 +179,32 @@ main() {
   [[ -z "$ARCH" ]] && detect_arch
   log "Detect arch → $ARCH"
   json=$(latest_release_json)
+  TARGET_VERSION=$(echo "$json" | jq -r '.tag_name // ""')
+  if [[ -n "$VERSION" ]]; then
+    TARGET_VERSION="$VERSION"
+  fi
+  TARGET_VERSION="${TARGET_VERSION:-unknown}"
+
+  installed_ver=$(installed_version)
+  norm_installed=$(normalize_version "$installed_ver")
+  norm_target=$(normalize_version "$TARGET_VERSION")
+
+  if [[ "$MODE" == "check" ]]; then
+    log "Installed version: v${installed_ver:-none}"
+    log "Latest release: $TARGET_VERSION"
+    if [[ -n "$installed_ver" && "$norm_installed" == "$norm_target" ]]; then
+      log "Xray is up-to-date."
+    else
+      log "Update available."
+    fi
+    exit 0
+  fi
+
+  if [[ -n "$installed_ver" && "$norm_installed" == "$norm_target" ]]; then
+    log "Xray already at target version (v$installed_ver); nothing to do."
+    exit 0
+  fi
+
   pick_asset_urls "$ARCH" "$json"
   log "ZIP:  $ZIP_URL"
   log "DGST: $DGST_URL"
