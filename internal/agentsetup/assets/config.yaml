@@ -14,6 +14,9 @@ xray:
     vmess: "vmess-ws"
     trojan: "trojan-ws"
 
+github:
+  token: ""
+
 intervals:
   state_sec: 15
   stats_sec: 60

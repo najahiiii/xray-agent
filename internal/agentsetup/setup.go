@@ -10,8 +10,9 @@ import (
 
 	"github.com/najahiiii/xray-agent/internal/config"
 
-	"gopkg.in/yaml.v3"
 	"log/slog"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -124,7 +125,9 @@ type UpdateControlOptions struct {
 	Token       string
 	ServerSlug  string
 	TLSInsecure *bool
+	GitHubToken string
 	Logger      *slog.Logger
+	Restart     bool
 }
 
 // UpdateControl updates control.* fields in the agent config. Creates the config from the embedded sample if missing.
@@ -135,7 +138,7 @@ func UpdateControl(ctx context.Context, opts UpdateControlOptions) error {
 	}
 	log := opts.Logger
 
-	if opts.BaseURL == "" && opts.Token == "" && opts.ServerSlug == "" && opts.TLSInsecure == nil {
+	if opts.BaseURL == "" && opts.Token == "" && opts.ServerSlug == "" && opts.TLSInsecure == nil && opts.GitHubToken == "" {
 		return fmt.Errorf("no control fields provided for update")
 	}
 
@@ -156,6 +159,9 @@ func UpdateControl(ctx context.Context, opts UpdateControlOptions) error {
 	if opts.TLSInsecure != nil {
 		cfg.Control.TLSInsecure = *opts.TLSInsecure
 	}
+	if opts.GitHubToken != "" {
+		cfg.GitHub.Token = opts.GitHubToken
+	}
 
 	out, err := yaml.Marshal(cfg)
 	if err != nil {
@@ -166,6 +172,14 @@ func UpdateControl(ctx context.Context, opts UpdateControlOptions) error {
 	}
 	if log != nil {
 		log.Info("updated agent config control fields", "path", path)
+	}
+	if opts.Restart {
+		if err := runCmd(ctx, "systemctl", "restart", "xray-agent"); err != nil {
+			return fmt.Errorf("restart agent: %w", err)
+		}
+		if log != nil {
+			log.Info("restarted xray-agent service")
+		}
 	}
 	return nil
 }

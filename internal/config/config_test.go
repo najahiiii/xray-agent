@@ -20,6 +20,8 @@ xray:
     vless: "vless"
     vmess: "vmess"
     trojan: "trojan"
+github:
+  token: ""
 `
 
 func writeConfig(t *testing.T, body string) string {

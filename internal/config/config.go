@@ -37,6 +37,10 @@ type Config struct {
 		} `yaml:"inbound_tags"`
 	} `yaml:"xray"`
 
+	GitHub struct {
+		Token string `yaml:"token"`
+	} `yaml:"github"`
+
 	Intervals struct {
 		StateSec     int `yaml:"state_sec"`
 		StatsSec     int `yaml:"stats_sec"`

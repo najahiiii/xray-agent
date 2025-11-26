@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 User=root
 Group=root
-ExecStart=/usr/local/bin/xray-agent -config /etc/xray-agent/config.yaml
+ExecStart=/usr/local/bin/xray-agent run --config /etc/xray-agent/config.yaml
 Restart=always
 RestartSec=3
 NoNewPrivileges=yes
