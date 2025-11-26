@@ -13,7 +13,7 @@ import (
 	"github.com/najahiiii/xray-agent/internal/control"
 	"github.com/najahiiii/xray-agent/internal/logger"
 	"github.com/najahiiii/xray-agent/internal/metrics"
-	internalstats "github.com/najahiiii/xray-agent/internal/stats"
+	internalStats "github.com/najahiiii/xray-agent/internal/stats"
 	"github.com/najahiiii/xray-agent/internal/xray"
 )
 
@@ -31,7 +31,7 @@ func main() {
 	log := logger.New(cfg.Logging.Level)
 	ctrl := control.NewClient(cfg, log)
 	xm := xray.NewManager(cfg, log)
-	stats := internalstats.New(cfg, log)
+	stats := internalStats.New(cfg, log)
 	metricCollector := metrics.New(log)
 
 	agt := agent.New(cfg, log, ctrl, xm, stats, metricCollector)
