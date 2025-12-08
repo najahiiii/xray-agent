@@ -2,6 +2,7 @@ package xraycore
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -428,18 +429,55 @@ func runCmd(cmd *exec.Cmd) error {
 }
 
 func copyFile(src, dest string, perm os.FileMode) error {
-	data, err := os.ReadFile(src)
+	data, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	return writeBytes(dest, data, perm)
+	defer data.Close()
+
+	return writeStream(dest, data, perm)
 }
 
 func writeBytes(dest string, data []byte, perm os.FileMode) error {
+	return writeStream(dest, bytes.NewReader(data), perm)
+}
+
+func writeStream(dest string, r io.Reader, perm os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(dest, data, perm)
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(dest), filepath.Base(dest)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+
+	if _, err := io.Copy(tmpFile, r); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := tmpFile.Chmod(perm); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+
+	if err := os.Rename(tmpPath, dest); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	return nil
 }
 
 func installedVersion(ctx context.Context) string {
