@@ -112,7 +112,7 @@ func TestAgentSyncStateOnce(t *testing.T) {
 	if len(rec.adds) != 1 || rec.adds[0] != "user@example.com" {
 		t.Fatalf("expected add, got %+v", rec.adds)
 	}
-	if !a.state.IsUnchanged(1, stateResp.Clients) {
+	if !a.state.IsUnchanged(1, stateResp.Clients, nil) {
 		t.Fatal("state store not updated")
 	}
 }

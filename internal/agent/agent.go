@@ -72,20 +72,21 @@ func (a *Agent) syncStateOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if a.state.IsUnchanged(ds.ConfigVersion, ds.Clients) {
+	if a.state.IsUnchanged(ds.ConfigVersion, ds.Clients, ds.Routes) {
 		a.log.Debug("state unchanged")
 		return nil
 	}
 
 	current := a.state.ClientsSnapshot()
-	changed, err := a.xray.State(ctx, current, ds.Clients)
+	currentRoutes := a.state.RoutesSnapshot()
+	changed, err := a.xray.State(ctx, current, ds.Clients, currentRoutes, ds.Routes)
 	if err != nil {
 		return err
 	}
 	if changed {
-		a.log.Info("applied clients", "version", ds.ConfigVersion, "count", len(ds.Clients))
+		a.log.Info("applied clients/routes", "version", ds.ConfigVersion, "clients", len(ds.Clients), "routes", len(ds.Routes))
 	}
-	a.state.Update(ds.ConfigVersion, ds.Clients)
+	a.state.Update(ds.ConfigVersion, ds.Clients, ds.Routes)
 	return nil
 }
 

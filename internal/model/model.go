@@ -5,6 +5,7 @@ import "time"
 type State struct {
 	ConfigVersion int64          `json:"config_version"`
 	Clients       []Client       `json:"clients"`
+	Routes        []RouteRule    `json:"routes,omitempty"`
 	Meta          map[string]any `json:"meta,omitempty"`
 }
 
@@ -33,6 +34,18 @@ type UserUsage struct {
 	Email    string `json:"email"`
 	Uplink   int64  `json:"uplink"`
 	Downlink int64  `json:"downlink"`
+}
+
+type RouteRule struct {
+	Tag         string   `json:"tag"`
+	OutboundTag string   `json:"outbound_tag,omitempty"`
+	BalancerTag string   `json:"balancer_tag,omitempty"`
+	Domain      []string `json:"domain,omitempty"`
+	IP          []string `json:"ip,omitempty"`
+	Port        string   `json:"port,omitempty"`
+	SourcePort  string   `json:"source_port,omitempty"`
+	InboundTag  []string `json:"inbound_tag,omitempty"`
+	Protocol    []string `json:"protocol,omitempty"`
 }
 
 type XraySysStats struct {

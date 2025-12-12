@@ -4,7 +4,8 @@
     "services": [
       "HandlerService",
       "LoggerService",
-      "StatsService"
+      "StatsService",
+      "RoutingService"
     ],
     "tag": "xray-api"
   },
@@ -69,6 +70,10 @@
     {
       "protocol": "freedom",
       "tag": "direct"
+    },
+    {
+      "protocol": "blackhole",
+      "tag": "blocked"
     }
   ],
   "stats": {},

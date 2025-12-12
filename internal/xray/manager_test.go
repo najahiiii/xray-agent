@@ -73,7 +73,7 @@ func TestManagerState(t *testing.T) {
 		{Proto: "vless", ID: "2", Email: "b@example.com"},
 	}
 
-	changed, err := mgr.State(context.Background(), current, desired)
+	changed, err := mgr.State(context.Background(), current, desired, map[string]model.RouteRule{}, nil)
 	if err != nil {
 		t.Fatalf("State: %v", err)
 	}
