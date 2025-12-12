@@ -1,11 +1,12 @@
 # xray-agent
 
-Provisioning/telemetry side for Xray nodes. The agent stays on the same host as Xray, pulls desired state from a control-panel, reconciles users through Xray’s HandlerService gRPC API, streams usage via StatsService, and periodically reports stats + heartbeats upstream.
+Provisioning/telemetry side for Xray nodes. The agent stays on the same host as Xray, pulls desired state from a control-panel, reconciles users through Xray’s HandlerService gRPC API, manages routing rules via RoutingService, streams usage via StatsService, and periodically reports stats + heartbeats upstream.
 
 ## Highlights
 
 - **Single source of truth** – Control-panel drives `state` JSON; the agent diffs and applies only the deltas.
 - **HandlerService apply** – Users are added/removed live via gRPC; no config.json juggling or daemon reloads.
+- **RoutingService apply** – Routing rules (field rules) are pushed live via gRPC using outbound tags you define (`direct`, `blocked`, or balancers).
 - **Stats over gRPC** – User uplink/downlink counters come from the native StatsService (fast + no subprocesses).
 - **Protocol aware** – VLESS / VMess / Trojan clients mapped to dedicated inbound tags for per-protocol isolation.
 - **Lightweight** – Pure Go binary; depends only on Xray’s gRPC endpoints exposed on `localhost`.
@@ -48,14 +49,14 @@ flowchart LR
   2. `stats_loop`: fetch per-email counters via Xray StatsService and POST batches to `/stats`.
   3. `metrics_loop`: pull CPU, memory, and bandwidth samples from `internal/metrics` and POST to `/metrics` (Next.js aggregates rows into hourly/daily buckets for charts).
   4. `heartbeat_loop`: POST `/heartbeat` so the control panel can mark nodes offline when beats stop.
-- **Xray-core integration** – Agent communicates with HandlerService/StatsService over gRPC (`127.0.0.1:10085` by default). HandlerService mutates in-memory users without touching config files, and StatsService reports ever-increasing counters (optionally reset after each push).
+- **Xray-core integration** – Agent communicates with HandlerService/StatsService/RoutingService over gRPC (`127.0.0.1:10085` by default). HandlerService mutates in-memory users without touching config files, RoutingService applies runtime rules, and StatsService reports ever-increasing counters (optionally reset after each push).
 - **Dashboard experience** – Admin UI hydrates server cards with `loadServerHealthEntry`, combining the latest heartbeat, server metrics, aggregates, and client listings. SSE events stream updates every ~10 seconds to keep charts and status badges current.
 
 All gRPC traffic is expected to stay on localhost; expose Xray’s API listener only to the agent. The control panel never reaches into Xray directly—it only talks to the agent via HTTPS.
 
 ## Configuration
 
-See [packaging/config.example.yaml](packaging/config.example.yaml) for the full schema. High-level knobs:
+See `internal/agentsetup/assets/config.yaml` for the full schema. High-level knobs:
 
 ```yaml
 control:
@@ -66,7 +67,7 @@ control:
 
 xray:
   binary: /usr/local/bin/xray # still used for stats reset checks if needed
-  api_server: 127.0.0.1:10085 # HandlerService + StatsService listener
+  api_server: 127.0.0.1:10085 # HandlerService + StatsService + RoutingService listener
   api_timeout_sec: 5
   stats_reset_each_push: true # tell StatsService to reset counters after read
   inbound_tags:
@@ -98,7 +99,16 @@ HandlerService must be enabled in your Xray config:
 }
 ```
 
-The agent only needs HandlerService for add/remove and StatsService for counters. Keep the listener on `127.0.0.1` (or a UNIX socket) because the agent currently dials with plaintext credentials.
+The agent needs HandlerService for add/remove, StatsService for counters, and RoutingService for runtime rules. Keep the listener on `127.0.0.1` (or a UNIX socket) because the agent currently dials with plaintext credentials.
+
+Base outbounds (sample config) include:
+
+```json
+{ "protocol": "freedom", "tag": "direct" },
+{ "protocol": "blackhole", "tag": "blocked" }
+```
+
+If you add new outbounds/balancers, declare them statically in config; the agent only pushes rules that reference existing outbound/balancer tags.
 
 ## CLI / Install
 
@@ -141,9 +151,21 @@ Systemd unit (installed by setup subcommand): `/usr/lib/systemd/system/xray-agen
     { "proto": "vmess", "id": "UUID", "email": "user_2@planB" },
     { "proto": "trojan", "password": "pass123", "email": "user_3@planC" }
   ],
+  "routes": [
+    {
+      "tag": "ads-block",
+      "outbound_tag": "blocked",
+      "domain": ["geosite:category-ads"]
+    },
+    { "tag": "direct-local", "outbound_tag": "direct", "ip": ["geoip:private"] }
+  ],
   "meta": { "ws_path": "/ws" }
 }
 ```
+
+Notes:
+
+- `routes` are applied via RoutingService and live only in memory; ensure control/state endpoint re-sends them after an Xray restart.
 
 ### `POST /api/agents/{server_slug}/stats`
 
