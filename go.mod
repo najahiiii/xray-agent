@@ -4,7 +4,7 @@ go 1.25.3
 
 require (
 	github.com/shirou/gopsutil/v3 v3.24.5
-	github.com/xtls/xray-core v1.251202.0
+	github.com/xtls/xray-core v1.251208.0
 	google.golang.org/grpc v1.77.0
 	gopkg.in/yaml.v3 v3.0.1
 )
