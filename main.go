@@ -302,7 +302,7 @@ func printHelp() {
 func printVersion() {
 	fmt.Printf("xray-agent %s (commit %s)\n", strings.TrimSpace(embeddedVersion), buildCommit())
 	fmt.Println()
-	fmt.Println("Copyright (C) 2025 Ahmad Thoriq Najahi <me@najahi.dev>.")
+	fmt.Println("Copyright (C) 2026 Ahmad Thoriq Najahi <me@najahi.dev>.")
 	fmt.Println("License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>")
 }
 
