@@ -9,6 +9,10 @@
     ],
     "tag": "xray-api"
   },
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": []
+  },
   "inbounds": [
     {
       "listen": "127.0.0.1",
@@ -74,6 +78,52 @@
     {
       "protocol": "blackhole",
       "tag": "blocked"
+    },
+    {
+      "tag": "nevacloud",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "id.zeph.my.id",
+            "port": 443,
+            "users": [
+              {
+                "id": "f119d6ad-0821-4898-ac37-06166801691c",
+                "encryption": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "id.zeph.my.id",
+          "alpn": ["h3", "h2", "http/1.1"],
+          "fingerprint": "chrome",
+          "allowInsecure": true
+        },
+        "wsSettings": {
+          "path": "/vless/najahi",
+          "host": "id.zeph.my.id",
+          "heartbeatPeriod": 0
+        }
+      }
+    },
+    {
+      "tag": "wireproxy",
+      "protocol": "socks",
+      "settings": {
+        "servers": [
+          {
+            "address": "127.0.0.1",
+            "port": 46969,
+            "users": []
+          }
+        ]
+      }
     }
   ],
   "stats": {},
