@@ -48,6 +48,13 @@ func TestClientStateAndPosts(t *testing.T) {
 			}
 		case "/api/agents/sg/heartbeat":
 			hbHit = true
+			body, _ := io.ReadAll(r.Body)
+			if !bytes.Contains(body, []byte(`"ok":true`)) {
+				t.Fatalf("heartbeat body %s", string(body))
+			}
+			if !bytes.Contains(body, []byte(`"agent_version":"v1.0.3"`)) {
+				t.Fatalf("heartbeat body %s", string(body))
+			}
 			w.WriteHeader(http.StatusOK)
 		default:
 			http.NotFound(w, r)
@@ -60,7 +67,7 @@ func TestClientStateAndPosts(t *testing.T) {
 	cfg.Control.Token = "token"
 	cfg.Control.ServerSlug = "sg"
 
-	client := NewClient(cfg, testLogger())
+	client := NewClient(cfg, testLogger(), "v1.0.3")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 

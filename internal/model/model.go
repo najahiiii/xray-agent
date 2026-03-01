@@ -21,6 +21,11 @@ type StatsPush struct {
 	Users      []UserUsage `json:"users"`
 }
 
+type HeartbeatPush struct {
+	OK           bool   `json:"ok"`
+	AgentVersion string `json:"agent_version,omitempty"`
+}
+
 type ServerMetricPush struct {
 	ServerTime        time.Time     `json:"server_time"`
 	CPUPercent        *float64      `json:"cpu_percent,omitempty"`

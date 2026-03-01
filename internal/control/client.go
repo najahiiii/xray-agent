@@ -18,12 +18,13 @@ import (
 )
 
 type Client struct {
-	cfg    *config.Config
-	client *http.Client
-	log    *slog.Logger
+	cfg          *config.Config
+	client       *http.Client
+	log          *slog.Logger
+	agentVersion string
 }
 
-func NewClient(cfg *config.Config, log *slog.Logger) *Client {
+func NewClient(cfg *config.Config, log *slog.Logger, agentVersion string) *Client {
 	tr := &http.Transport{
 		DialContext: (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
 		TLSClientConfig: &tls.Config{ //nolint:gosec
@@ -35,9 +36,10 @@ func NewClient(cfg *config.Config, log *slog.Logger) *Client {
 		TLSHandshakeTimeout: 5 * time.Second,
 	}
 	return &Client{
-		cfg:    cfg,
-		client: &http.Client{Transport: tr, Timeout: 12 * time.Second},
-		log:    log,
+		cfg:          cfg,
+		client:       &http.Client{Transport: tr, Timeout: 12 * time.Second},
+		log:          log,
+		agentVersion: agentVersion,
 	}
 }
 
@@ -130,10 +132,21 @@ func (c *Client) PostMetrics(ctx context.Context, p *model.ServerMetricPush) err
 
 func (c *Client) Heartbeat(ctx context.Context) error {
 	url := fmt.Sprintf("%s/api/agents/%s/heartbeat", c.cfg.Control.BaseURL, c.cfg.Control.ServerSlug)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	payload := model.HeartbeatPush{OK: true}
+	if c.agentVersion != "" {
+		payload.AgentVersion = c.agentVersion
+	}
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(&payload); err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &buf)
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Content-Type", "application/json")
 	c.auth(req)
 
 	resp, err := c.client.Do(req)

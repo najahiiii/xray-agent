@@ -179,7 +179,10 @@ Notes:
 ### `POST /api/agents/{server_slug}/heartbeat`
 
 ```json
-{ "ok": true }
+{
+  "ok": true,
+  "agent_version": "v1.0.3"
+}
 ```
 
 ### `POST /api/agents/{server_slug}/metrics`

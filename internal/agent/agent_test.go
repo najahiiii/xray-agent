@@ -97,7 +97,7 @@ func TestAgentSyncStateOnce(t *testing.T) {
 	cfg.Control.BaseURL = srv.URL
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	ctrl := control.NewClient(cfg, log)
+	ctrl := control.NewClient(cfg, log, "v1.0.3")
 	manager := xray.NewManager(cfg, log)
 	collector := stats.New(cfg, log)
 
