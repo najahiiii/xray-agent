@@ -155,6 +155,11 @@ func (m *Manager) removeRoute(ctx context.Context, client routerService.RoutingS
 }
 
 func (m *Manager) addRoute(ctx context.Context, client routerService.RoutingServiceClient, r model.RouteRule) error {
+	// Ensure we don't leave stale runtime routes behind after agent restarts.
+	if err := m.removeRoute(ctx, client, r); err != nil && m.log != nil {
+		m.log.Debug("remove stale route before add failed", "ruleTag", r.Tag, "err", err)
+	}
+
 	tmsg, err := buildRoutingConfig(r)
 	if err != nil {
 		return err
@@ -222,6 +227,8 @@ func equalClient(a, b model.Client) bool {
 }
 
 func diffRoutes(current map[string]model.RouteRule, desired []model.RouteRule) (adds, removes []model.RouteRule) {
+	desired, _ = model.NormalizeRouteRules(desired)
+
 	desiredMap := make(map[string]model.RouteRule, len(desired))
 	for _, r := range desired {
 		desiredMap[r.Tag] = r

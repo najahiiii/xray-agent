@@ -72,21 +72,31 @@ func (a *Agent) syncStateOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if a.state.IsUnchanged(ds.ConfigVersion, ds.Clients, ds.Routes) {
+
+	normalizedRoutes, duplicateRouteTags := model.NormalizeRouteRules(ds.Routes)
+	if len(duplicateRouteTags) > 0 {
+		a.log.Warn(
+			"state contains duplicate route tags; keeping last occurrence",
+			"tags",
+			duplicateRouteTags,
+		)
+	}
+
+	if a.state.IsUnchanged(ds.ConfigVersion, ds.Clients, normalizedRoutes) {
 		a.log.Debug("state unchanged")
 		return nil
 	}
 
 	current := a.state.ClientsSnapshot()
 	currentRoutes := a.state.RoutesSnapshot()
-	changed, err := a.xray.State(ctx, current, ds.Clients, currentRoutes, ds.Routes)
+	changed, err := a.xray.State(ctx, current, ds.Clients, currentRoutes, normalizedRoutes)
 	if err != nil {
 		return err
 	}
 	if changed {
-		a.log.Info("applied clients/routes", "version", ds.ConfigVersion, "clients", len(ds.Clients), "routes", len(ds.Routes))
+		a.log.Info("applied clients/routes", "version", ds.ConfigVersion, "clients", len(ds.Clients), "routes", len(normalizedRoutes))
 	}
-	a.state.Update(ds.ConfigVersion, ds.Clients, ds.Routes)
+	a.state.Update(ds.ConfigVersion, ds.Clients, normalizedRoutes)
 	return nil
 }
 
