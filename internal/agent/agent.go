@@ -44,6 +44,7 @@ func (a *Agent) Start(ctx context.Context) {
 	go a.runStatsLoop(ctx)
 	go a.runMetricsLoop(ctx)
 	go a.runHeartbeatLoop(ctx)
+	go a.runCommandLoop(ctx)
 }
 
 func (a *Agent) runStateLoop(ctx context.Context) {

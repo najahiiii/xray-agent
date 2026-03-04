@@ -12,6 +12,8 @@ import (
 	handlerService "github.com/xtls/xray-core/app/proxyman/command"
 	routerService "github.com/xtls/xray-core/app/router/command"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type handlerOp struct {
@@ -32,7 +34,8 @@ type routeOp struct {
 
 type fakeRoutingServer struct {
 	routerService.UnimplementedRoutingServiceServer
-	ops []routeOp
+	ops       []routeOp
+	removeErr error
 }
 
 func (f *fakeHandlerServer) AlterInbound(ctx context.Context, req *handlerService.AlterInboundRequest) (*handlerService.AlterInboundResponse, error) {
@@ -61,6 +64,9 @@ func (f *fakeRoutingServer) AddRule(ctx context.Context, req *routerService.AddR
 
 func (f *fakeRoutingServer) RemoveRule(ctx context.Context, req *routerService.RemoveRuleRequest) (*routerService.RemoveRuleResponse, error) {
 	f.ops = append(f.ops, routeOp{tag: req.RuleTag, kind: "remove"})
+	if f.removeErr != nil {
+		return nil, f.removeErr
+	}
 	return &routerService.RemoveRuleResponse{}, nil
 }
 
@@ -154,6 +160,81 @@ func TestManagerStatePreRemovesStaleRouteBeforeAdd(t *testing.T) {
 		t.Fatalf("unexpected route ops: %+v", rs.ops)
 	}
 	if rs.ops[1].kind != "add" {
+		t.Fatalf("unexpected route ops: %+v", rs.ops)
+	}
+}
+
+func TestManagerStateRouteRemoveNotFoundStillAdds(t *testing.T) {
+	_, rs, addr, closeFn := startAPIServer(t)
+	defer closeFn()
+	rs.removeErr = status.Error(codes.NotFound, "rule not found")
+
+	cfg := &config.Config{}
+	cfg.Xray.APIServer = addr
+	cfg.Xray.APITimeoutSec = 1
+
+	mgr := NewManager(cfg, nil)
+	desiredRoutes := []model.RouteRule{
+		{Tag: "re-route-ipv4", OutboundTag: "direct", IP: []string{"8.8.8.8/32"}},
+	}
+
+	changed, err := mgr.State(
+		context.Background(),
+		map[string]model.Client{},
+		nil,
+		map[string]model.RouteRule{},
+		desiredRoutes,
+	)
+	if err != nil {
+		t.Fatalf("State: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected change")
+	}
+
+	if len(rs.ops) != 2 {
+		t.Fatalf("expected 2 route operations, got %d", len(rs.ops))
+	}
+	if rs.ops[0].kind != "remove" || rs.ops[0].tag != "re-route-ipv4" {
+		t.Fatalf("unexpected route ops: %+v", rs.ops)
+	}
+	if rs.ops[1].kind != "add" {
+		t.Fatalf("unexpected route ops: %+v", rs.ops)
+	}
+}
+
+func TestManagerStateRouteRemoveFailureStopsAdd(t *testing.T) {
+	_, rs, addr, closeFn := startAPIServer(t)
+	defer closeFn()
+	rs.removeErr = status.Error(codes.DeadlineExceeded, "timeout")
+
+	cfg := &config.Config{}
+	cfg.Xray.APIServer = addr
+	cfg.Xray.APITimeoutSec = 1
+
+	mgr := NewManager(cfg, nil)
+	desiredRoutes := []model.RouteRule{
+		{Tag: "re-route-ipv4", OutboundTag: "direct", IP: []string{"8.8.8.8/32"}},
+	}
+
+	changed, err := mgr.State(
+		context.Background(),
+		map[string]model.Client{},
+		nil,
+		map[string]model.RouteRule{},
+		desiredRoutes,
+	)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if changed {
+		t.Fatal("did not expect changed when remove route failed")
+	}
+
+	if len(rs.ops) != 1 {
+		t.Fatalf("expected only remove operation, got %d", len(rs.ops))
+	}
+	if rs.ops[0].kind != "remove" || rs.ops[0].tag != "re-route-ipv4" {
 		t.Fatalf("unexpected route ops: %+v", rs.ops)
 	}
 }

@@ -1,12 +1,13 @@
 [Unit]
 Description=Xray Provisioning Agent
-After=network-online.target
-Wants=network-online.target
+After=network-online.target xray.service
+Wants=network-online.target xray.service
 
 [Service]
 User=root
 Group=root
-ExecStart=/usr/local/bin/xray-agent -config /etc/xray-agent/config.yaml
+ExecStartPre=/usr/bin/systemctl try-restart xray
+ExecStart=/usr/local/bin/xray-agent run --config /etc/xray-agent/config.yaml
 Restart=always
 RestartSec=3
 NoNewPrivileges=yes

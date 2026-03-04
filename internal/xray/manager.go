@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/najahiiii/xray-agent/internal/config"
@@ -19,7 +20,9 @@ import (
 	"github.com/xtls/xray-core/proxy/vless"
 	"github.com/xtls/xray-core/proxy/vmess"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	"log/slog"
 )
@@ -156,8 +159,14 @@ func (m *Manager) removeRoute(ctx context.Context, client routerService.RoutingS
 
 func (m *Manager) addRoute(ctx context.Context, client routerService.RoutingServiceClient, r model.RouteRule) error {
 	// Ensure we don't leave stale runtime routes behind after agent restarts.
-	if err := m.removeRoute(ctx, client, r); err != nil && m.log != nil {
-		m.log.Debug("remove stale route before add failed", "ruleTag", r.Tag, "err", err)
+	if err := m.removeRoute(ctx, client, r); err != nil {
+		if isRouteNotFoundError(err) {
+			if m.log != nil {
+				m.log.Debug("stale route not found before add", "ruleTag", r.Tag)
+			}
+		} else {
+			return fmt.Errorf("remove stale route %q before add: %w", r.Tag, err)
+		}
 	}
 
 	tmsg, err := buildRoutingConfig(r)
@@ -174,6 +183,33 @@ func (m *Manager) addRoute(ctx context.Context, client routerService.RoutingServ
 
 	_, err = client.AddRule(callCtx, req)
 	return err
+}
+
+func isRouteNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.NotFound:
+			return true
+		case codes.Unknown:
+			msg := strings.ToLower(st.Message())
+			if strings.Contains(msg, "not found") ||
+				strings.Contains(msg, "can't find") ||
+				strings.Contains(msg, "cannot find") ||
+				strings.Contains(msg, "no such") {
+				return true
+			}
+		}
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "can't find") ||
+		strings.Contains(msg, "cannot find") ||
+		strings.Contains(msg, "no such")
 }
 
 func (m *Manager) tagForProto(proto string) string {

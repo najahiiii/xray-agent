@@ -9,6 +9,32 @@ type State struct {
 	Meta          map[string]any `json:"meta,omitempty"`
 }
 
+type AgentCommandType string
+
+const (
+	AgentCommandTypeRestartCore  AgentCommandType = "RESTART_CORE"
+	AgentCommandTypeRestartAgent AgentCommandType = "RESTART_AGENT"
+)
+
+type AgentCommand struct {
+	ID          string           `json:"id"`
+	Type        AgentCommandType `json:"type"`
+	RequestedAt time.Time        `json:"requested_at"`
+}
+
+type AgentCommandAckStatus string
+
+const (
+	AgentCommandAckSucceeded AgentCommandAckStatus = "SUCCEEDED"
+	AgentCommandAckFailed    AgentCommandAckStatus = "FAILED"
+)
+
+type AgentCommandAck struct {
+	Status       AgentCommandAckStatus `json:"status"`
+	ErrorMessage string                `json:"error_message,omitempty"`
+	Result       map[string]any        `json:"result,omitempty"`
+}
+
 type Client struct {
 	Proto    string `json:"proto"`
 	ID       string `json:"id,omitempty"`
