@@ -204,6 +204,9 @@ Fields are optional; send whatever the agent could sample for that interval.
 - Go ≥ 1.25.3 (module declares 1.25.3; see `go.mod`).
 - Run `go test ./...` before submitting changes.
 - Formatter: `gofmt` (already wired via CI scripts).
+- Enable local pre-commit checks:
+  - `./scripts/setup-git-hooks.sh`
+  - Hook runs `gofmt` on staged `*.go`, then `go vet . ./internal/...`, and `go test . ./internal/...`.
 
 ## License
 
