@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/najahiiii/xray-agent/internal/config"
@@ -25,6 +26,7 @@ type Agent struct {
 	stats   *stats.Collector
 	metrics *metrics.Collector
 	state   *state.Store
+	syncMu  sync.Mutex
 }
 
 func New(cfg *config.Config, log *slog.Logger, ctrl *control.Client, xr *xray.Manager, statsCollector *stats.Collector, metricsCollector *metrics.Collector) *Agent {
@@ -69,6 +71,9 @@ func (a *Agent) runStateLoop(ctx context.Context) {
 }
 
 func (a *Agent) syncStateOnce(ctx context.Context) error {
+	a.syncMu.Lock()
+	defer a.syncMu.Unlock()
+
 	ds, err := a.ctrl.GetState(ctx)
 	if err != nil {
 		return err
