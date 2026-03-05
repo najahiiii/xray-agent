@@ -26,18 +26,21 @@ type Agent struct {
 	stats   *stats.Collector
 	metrics *metrics.Collector
 	state   *state.Store
-	syncMu  sync.Mutex
+	// statsSnapshot keeps the last seen cumulative counters when StatsResetEachPush is disabled.
+	statsSnapshot map[string][2]int64
+	syncMu        sync.Mutex
 }
 
 func New(cfg *config.Config, log *slog.Logger, ctrl *control.Client, xr *xray.Manager, statsCollector *stats.Collector, metricsCollector *metrics.Collector) *Agent {
 	return &Agent{
-		cfg:     cfg,
-		log:     log,
-		ctrl:    ctrl,
-		xray:    xr,
-		stats:   statsCollector,
-		metrics: metricsCollector,
-		state:   state.New(),
+		cfg:           cfg,
+		log:           log,
+		ctrl:          ctrl,
+		xray:          xr,
+		stats:         statsCollector,
+		metrics:       metricsCollector,
+		state:         state.New(),
+		statsSnapshot: map[string][2]int64{},
 	}
 }
 
@@ -121,6 +124,12 @@ func (a *Agent) runStatsLoop(ctx context.Context) {
 			if statsMap, err := a.stats.QueryUserBytes(ctx, emails); err != nil {
 				a.log.Warn("stats query", "err", err)
 			} else {
+				if !a.cfg.Xray.StatsResetEachPush {
+					statsMap = a.normalizeStatsDeltas(statsMap)
+				} else if len(a.statsSnapshot) > 0 {
+					clear(a.statsSnapshot)
+				}
+
 				users := make([]model.UserUsage, 0, len(statsMap))
 				for _, email := range emails {
 					if usage, ok := statsMap[email]; ok {
@@ -229,4 +238,48 @@ func (a *Agent) collectXraySysStats(ctx context.Context) *model.XraySysStats {
 		return nil
 	}
 	return stats
+}
+
+func (a *Agent) normalizeStatsDeltas(current map[string][2]int64) map[string][2]int64 {
+	if len(current) == 0 {
+		clear(a.statsSnapshot)
+		return current
+	}
+
+	normalized := make(map[string][2]int64, len(current))
+	present := make(map[string]struct{}, len(current))
+
+	for email, usage := range current {
+		key := strings.ToLower(email)
+		present[key] = struct{}{}
+
+		prev, found := a.statsSnapshot[key]
+		uplink := int64(0)
+		downlink := int64(0)
+		if found {
+			uplink = usageCounterDelta(prev[0], usage[0])
+			downlink = usageCounterDelta(prev[1], usage[1])
+		}
+
+		normalized[email] = [2]int64{uplink, downlink}
+		a.statsSnapshot[key] = usage
+	}
+
+	for email := range a.statsSnapshot {
+		if _, ok := present[email]; !ok {
+			delete(a.statsSnapshot, email)
+		}
+	}
+
+	return normalized
+}
+
+func usageCounterDelta(prev, curr int64) int64 {
+	if curr <= 0 {
+		return 0
+	}
+	if curr >= prev {
+		return curr - prev
+	}
+	return curr
 }

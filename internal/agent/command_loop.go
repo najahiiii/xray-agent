@@ -16,6 +16,8 @@ const (
 	coreRestartSyncTimeout  = 5 * time.Second
 )
 
+var systemctlRunner = runSystemctl
+
 func (a *Agent) runCommandLoop(ctx context.Context) {
 	intv := time.Duration(a.cfg.Intervals.StateSec) * time.Second
 	if intv <= 0 {
@@ -51,7 +53,7 @@ func (a *Agent) executeNextCommand(ctx context.Context) error {
 	a.log.Info("executing agent command", "command_id", command.ID, "type", command.Type)
 
 	if command.Type == model.AgentCommandTypeRestartAgent {
-		return a.ackThenRestartAgent(command.ID, startedAt)
+		return a.restartAgentAndAck(command.ID, startedAt)
 	}
 
 	execErr := a.executeAgentCommand(ctx, command.Type)
@@ -88,32 +90,39 @@ func (a *Agent) executeNextCommand(ctx context.Context) error {
 	return nil
 }
 
-func (a *Agent) ackThenRestartAgent(commandID string, startedAt time.Time) error {
+func (a *Agent) restartAgentAndAck(commandID string, startedAt time.Time) error {
+	restartErr := systemctlRunner(context.Background(), "restart", "--no-block", "xray-agent")
+
 	ack := &model.AgentCommandAck{
 		Status: model.AgentCommandAckSucceeded,
 		Result: map[string]any{
 			"executed_at": startedAt.Format(time.RFC3339),
 			"type":        string(model.AgentCommandTypeRestartAgent),
-			"mode":        "ack_then_restart",
+			"mode":        "restart_triggered",
 		},
+	}
+	if restartErr != nil {
+		ack.Status = model.AgentCommandAckFailed
+		ack.ErrorMessage = restartErr.Error()
+		ack.Result["mode"] = "restart_trigger_failed"
 	}
 	if ackErr := a.ctrl.AckCommand(context.Background(), commandID, ack); ackErr != nil {
 		return fmt.Errorf("ack command %s: %w", commandID, ackErr)
 	}
 
-	a.log.Info("agent restart acknowledged, restarting service", "command_id", commandID)
-	if err := runSystemctl(context.Background(), "restart", "--no-block", "xray-agent"); err != nil {
-		a.log.Warn("restart agent trigger failed after ack", "command_id", commandID, "err", err)
+	if restartErr != nil {
+		a.log.Warn("restart agent trigger failed", "command_id", commandID, "err", restartErr)
 		return nil
 	}
 
+	a.log.Info("agent restart trigger accepted", "command_id", commandID)
 	return nil
 }
 
 func (a *Agent) executeAgentCommand(ctx context.Context, commandType model.AgentCommandType) error {
 	switch commandType {
 	case model.AgentCommandTypeRestartCore:
-		if err := runSystemctl(ctx, "restart", "xray"); err != nil {
+		if err := systemctlRunner(ctx, "restart", "xray"); err != nil {
 			return err
 		}
 		if err := a.syncStateAfterCoreRestart(ctx); err != nil {
