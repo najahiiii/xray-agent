@@ -73,6 +73,7 @@
       "0": {
         "statsUserDownlink": true,
         "statsUserUplink": true,
+        "statsUserOnline": true,
         "statsInTag": false,
         "statsOutTag": false
       }

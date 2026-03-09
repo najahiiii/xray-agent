@@ -11,6 +11,7 @@ import (
 const (
 	DefaultXrayVersion          = "v25.10.15"
 	DefaultStateIntervalSec     = 15
+	DefaultOnlineIntervalSec    = 10
 	DefaultStatsIntervalSec     = 60
 	DefaultHeartbeatIntervalSec = 30
 	DefaultMetricsIntervalSec   = 30
@@ -43,6 +44,7 @@ type Config struct {
 
 	Intervals struct {
 		StateSec     int `yaml:"state_sec"`
+		OnlineSec    int `yaml:"online_sec"`
 		StatsSec     int `yaml:"stats_sec"`
 		HeartbeatSec int `yaml:"heartbeat_sec"`
 		MetricsSec   int `yaml:"metrics_sec"`
@@ -75,6 +77,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Intervals.StateSec == 0 {
 		cfg.Intervals.StateSec = DefaultStateIntervalSec
+	}
+	if cfg.Intervals.OnlineSec == 0 {
+		cfg.Intervals.OnlineSec = DefaultOnlineIntervalSec
 	}
 	if cfg.Intervals.StatsSec == 0 {
 		cfg.Intervals.StatsSec = DefaultStatsIntervalSec

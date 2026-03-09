@@ -17,6 +17,7 @@ xray:
 
 intervals:
   state_sec: 15
+  online_sec: 10
   stats_sec: 60
   heartbeat_sec: 30
   metrics_sec: 30

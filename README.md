@@ -77,6 +77,7 @@ xray:
 
 intervals:
   state_sec: 15
+  online_sec: 10
   stats_sec: 60
   heartbeat_sec: 30
   metrics_sec: 30
@@ -100,6 +101,8 @@ HandlerService must be enabled in your Xray config:
 ```
 
 The agent needs HandlerService for add/remove, StatsService for counters, and RoutingService for runtime rules. Keep the listener on `127.0.0.1` (or a UNIX socket) because the agent currently dials with plaintext credentials.
+
+To capture online users and their source IPs, enable `statsUserOnline` in your Xray policy and keep `intervals.online_sec` below the Xray online-map expiry window.
 
 Base outbounds (sample config) include:
 
@@ -173,6 +176,23 @@ Notes:
 {
   "server_time": "2025-11-07T15:01:00Z",
   "users": [{ "email": "user_1@planA", "uplink": 123, "downlink": 456 }]
+}
+```
+
+### `POST /api/agents/{server_slug}/online`
+
+```json
+{
+  "server_time": "2025-11-07T15:01:00Z",
+  "users": [
+    {
+      "email": "user_1@planA",
+      "proto": "vless",
+      "ips": [
+        { "address": "203.0.113.5", "last_seen_at": "2025-11-07T15:00:58Z" }
+      ]
+    }
+  ]
 }
 ```
 

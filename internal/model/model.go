@@ -47,6 +47,11 @@ type StatsPush struct {
 	Users      []UserUsage `json:"users"`
 }
 
+type OnlineUsersPush struct {
+	ServerTime time.Time        `json:"server_time"`
+	Users      []OnlineUserInfo `json:"users"`
+}
+
 type HeartbeatPush struct {
 	OK           bool   `json:"ok"`
 	AgentVersion string `json:"agent_version,omitempty"`
@@ -65,6 +70,17 @@ type UserUsage struct {
 	Email    string `json:"email"`
 	Uplink   int64  `json:"uplink"`
 	Downlink int64  `json:"downlink"`
+}
+
+type OnlineUserInfo struct {
+	Email string         `json:"email"`
+	Proto string         `json:"proto,omitempty"`
+	IPs   []OnlineUserIP `json:"ips,omitempty"`
+}
+
+type OnlineUserIP struct {
+	Address    string    `json:"address"`
+	LastSeenAt time.Time `json:"last_seen_at"`
 }
 
 type RouteRule struct {

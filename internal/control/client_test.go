@@ -22,6 +22,7 @@ func testLogger() *slog.Logger {
 func TestClientStateAndPosts(t *testing.T) {
 	state := model.State{ConfigVersion: 42}
 	statsHit := false
+	onlineHit := false
 	hbHit := false
 	metricsHit := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +40,12 @@ func TestClientStateAndPosts(t *testing.T) {
 			body, _ := io.ReadAll(r.Body)
 			if !bytes.Contains(body, []byte("users")) {
 				t.Fatalf("stats body %s", string(body))
+			}
+		case "/api/agents/sg/online":
+			onlineHit = true
+			body, _ := io.ReadAll(r.Body)
+			if !bytes.Contains(body, []byte("last_seen_at")) {
+				t.Fatalf("online body %s", string(body))
 			}
 		case "/api/agents/sg/metrics":
 			metricsHit = true
@@ -82,14 +89,25 @@ func TestClientStateAndPosts(t *testing.T) {
 	if err := client.PostStats(ctx, &model.StatsPush{}); err != nil {
 		t.Fatalf("PostStats: %v", err)
 	}
+	if err := client.PostOnlineUsers(ctx, &model.OnlineUsersPush{
+		Users: []model.OnlineUserInfo{{
+			Email: "user@example.com",
+			IPs: []model.OnlineUserIP{{
+				Address:    "203.0.113.10",
+				LastSeenAt: time.Now().UTC(),
+			}},
+		}},
+	}); err != nil {
+		t.Fatalf("PostOnlineUsers: %v", err)
+	}
 	if err := client.PostMetrics(ctx, &model.ServerMetricPush{CPUPercent: floatPtr(10)}); err != nil {
 		t.Fatalf("PostMetrics: %v", err)
 	}
 	if err := client.Heartbeat(ctx); err != nil {
 		t.Fatalf("Heartbeat: %v", err)
 	}
-	if !statsHit || !hbHit || !metricsHit {
-		t.Fatalf("expected stats, metrics, and heartbeat hits")
+	if !statsHit || !onlineHit || !hbHit || !metricsHit {
+		t.Fatalf("expected stats, online, metrics, and heartbeat hits")
 	}
 }
 

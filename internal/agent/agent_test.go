@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/najahiiii/xray-agent/internal/xray"
 
 	handlerService "github.com/xtls/xray-core/app/proxyman/command"
+	statscommand "github.com/xtls/xray-core/app/stats/command"
 	"google.golang.org/grpc"
 )
 
@@ -71,6 +73,7 @@ func newTestConfig(api string) *config.Config {
 	cfg.Xray.InboundTags.VMESS = "m"
 	cfg.Xray.InboundTags.TROJAN = "t"
 	cfg.Intervals.StateSec = 15
+	cfg.Intervals.OnlineSec = 10
 	cfg.Intervals.StatsSec = 60
 	cfg.Intervals.HeartbeatSec = 30
 	cfg.Intervals.MetricsSec = 30
@@ -115,4 +118,93 @@ func TestAgentSyncStateOnce(t *testing.T) {
 	if !a.state.IsUnchanged(1, stateResp.Clients, nil) {
 		t.Fatal("state store not updated")
 	}
+}
+
+func TestCollectOnlineSnapshot(t *testing.T) {
+	addr, closeFn := statsTestServer(t, nil, map[string]map[string]int64{
+		"User@example.com": {
+			"203.0.113.10": time.Now().UTC().Unix(),
+		},
+	})
+	defer closeFn()
+
+	cfg := newTestConfig(addr)
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	collector := stats.New(cfg, log)
+	a := New(cfg, log, nil, nil, collector, nil)
+	a.state.Update(1, []model.Client{{Proto: "vless", ID: "1", Email: "user@example.com"}}, nil)
+
+	payload, err := a.collectOnlineSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("collectOnlineSnapshot: %v", err)
+	}
+	if payload == nil || len(payload.Users) != 1 {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+	if payload.Users[0].Email != "user@example.com" {
+		t.Fatalf("unexpected email: %+v", payload.Users[0])
+	}
+	if payload.Users[0].Proto != "vless" {
+		t.Fatalf("unexpected proto: %+v", payload.Users[0])
+	}
+	if len(payload.Users[0].IPs) != 1 || payload.Users[0].IPs[0].Address != "203.0.113.10" {
+		t.Fatalf("unexpected ips: %+v", payload.Users[0].IPs)
+	}
+}
+
+func statsTestServer(t *testing.T, values map[string][2]int64, onlineIPs map[string]map[string]int64) (string, func()) {
+	t.Helper()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	server := grpc.NewServer()
+	statscommand.RegisterStatsServiceServer(server, &fakeAgentStatsServer{
+		values:    values,
+		onlineIPs: onlineIPs,
+	})
+	go server.Serve(lis)
+	return lis.Addr().String(), func() {
+		server.Stop()
+		_ = lis.Close()
+	}
+}
+
+type fakeAgentStatsServer struct {
+	statscommand.UnimplementedStatsServiceServer
+	values    map[string][2]int64
+	onlineIPs map[string]map[string]int64
+}
+
+func (f *fakeAgentStatsServer) QueryStats(ctx context.Context, req *statscommand.QueryStatsRequest) (*statscommand.QueryStatsResponse, error) {
+	resp := &statscommand.QueryStatsResponse{}
+	for email, usage := range f.values {
+		resp.Stat = append(resp.Stat,
+			&statscommand.Stat{Name: "user>>>" + email + ">>>traffic>>>uplink", Value: usage[0]},
+			&statscommand.Stat{Name: "user>>>" + email + ">>>traffic>>>downlink", Value: usage[1]},
+		)
+	}
+	return resp, nil
+}
+
+func (f *fakeAgentStatsServer) GetAllOnlineUsers(ctx context.Context, req *statscommand.GetAllOnlineUsersRequest) (*statscommand.GetAllOnlineUsersResponse, error) {
+	users := make([]string, 0, len(f.onlineIPs))
+	for email := range f.onlineIPs {
+		users = append(users, "user>>>"+email+">>>online")
+	}
+	return &statscommand.GetAllOnlineUsersResponse{Users: users}, nil
+}
+
+func (f *fakeAgentStatsServer) GetStatsOnlineIpList(ctx context.Context, req *statscommand.GetStatsRequest) (*statscommand.GetStatsOnlineIpListResponse, error) {
+	name := req.GetName()
+	const prefix = "user>>>"
+	const suffix = ">>>online"
+	if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, suffix) {
+		return &statscommand.GetStatsOnlineIpListResponse{Name: name}, nil
+	}
+	email := strings.TrimSuffix(strings.TrimPrefix(name, prefix), suffix)
+	return &statscommand.GetStatsOnlineIpListResponse{
+		Name: name,
+		Ips:  f.onlineIPs[email],
+	}, nil
 }

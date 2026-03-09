@@ -100,6 +100,36 @@ func (c *Client) PostStats(ctx context.Context, p *model.StatsPush) error {
 	return nil
 }
 
+func (c *Client) PostOnlineUsers(ctx context.Context, p *model.OnlineUsersPush) error {
+	if p == nil {
+		return nil
+	}
+	url := fmt.Sprintf("%s/api/agents/%s/online", c.cfg.Control.BaseURL, c.cfg.Control.ServerSlug)
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(p); err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	c.auth(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode/100 != 2 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("post online users http %d: %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
 func (c *Client) PostMetrics(ctx context.Context, p *model.ServerMetricPush) error {
 	if p == nil {
 		return nil

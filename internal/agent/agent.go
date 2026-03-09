@@ -46,6 +46,7 @@ func New(cfg *config.Config, log *slog.Logger, ctrl *control.Client, xr *xray.Ma
 
 func (a *Agent) Start(ctx context.Context) {
 	go a.runStateLoop(ctx)
+	go a.runOnlineLoop(ctx)
 	go a.runStatsLoop(ctx)
 	go a.runMetricsLoop(ctx)
 	go a.runHeartbeatLoop(ctx)
@@ -157,6 +158,38 @@ func (a *Agent) runStatsLoop(ctx context.Context) {
 	}
 }
 
+func (a *Agent) runOnlineLoop(ctx context.Context) {
+	if a.stats == nil {
+		return
+	}
+
+	intv := time.Duration(a.cfg.Intervals.OnlineSec) * time.Second
+	if intv <= 0 {
+		intv = 10 * time.Second
+	}
+	ticker := time.NewTicker(intv)
+	defer ticker.Stop()
+
+	for {
+		payload, err := a.collectOnlineSnapshot(ctx)
+		if err != nil {
+			a.log.Warn("online query", "err", err)
+		} else if payload != nil {
+			if err := a.ctrl.PostOnlineUsers(ctx, payload); err != nil {
+				a.log.Warn("post online users", "err", err)
+			} else {
+				a.log.Debug("posted online users", "count", len(payload.Users))
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
 func (a *Agent) runHeartbeatLoop(ctx context.Context) {
 	intv := time.Duration(a.cfg.Intervals.HeartbeatSec) * time.Second
 	if intv <= 0 {
@@ -238,6 +271,35 @@ func (a *Agent) collectXraySysStats(ctx context.Context) *model.XraySysStats {
 		return nil
 	}
 	return stats
+}
+
+func (a *Agent) collectOnlineSnapshot(ctx context.Context) (*model.OnlineUsersPush, error) {
+	users, err := a.stats.OnlineUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	clients := a.state.ClientsSnapshot()
+	byEmail := make(map[string]model.Client, len(clients))
+	for email, client := range clients {
+		byEmail[strings.ToLower(email)] = client
+	}
+
+	for idx := range users {
+		users[idx].Email = strings.ToLower(users[idx].Email)
+		if client, ok := byEmail[users[idx].Email]; ok && users[idx].Proto == "" {
+			users[idx].Proto = client.Proto
+		}
+	}
+
+	slices.SortFunc(users, func(a, b model.OnlineUserInfo) int {
+		return strings.Compare(a.Email, b.Email)
+	})
+
+	return &model.OnlineUsersPush{
+		ServerTime: time.Now().UTC(),
+		Users:      users,
+	}, nil
 }
 
 func (a *Agent) normalizeStatsDeltas(current map[string][2]int64) map[string][2]int64 {

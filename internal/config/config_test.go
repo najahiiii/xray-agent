@@ -38,6 +38,7 @@ func TestLoadDefaults(t *testing.T) {
 	path := writeConfig(t, baseYAML+`
 intervals:
   state_sec: 0
+  online_sec: 0
   stats_sec: 0
   heartbeat_sec: 0
   metrics_sec: 0
@@ -47,7 +48,7 @@ intervals:
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Intervals.StateSec != 15 || cfg.Intervals.StatsSec != 60 || cfg.Intervals.HeartbeatSec != 30 || cfg.Intervals.MetricsSec != 30 {
+	if cfg.Intervals.StateSec != 15 || cfg.Intervals.OnlineSec != 10 || cfg.Intervals.StatsSec != 60 || cfg.Intervals.HeartbeatSec != 30 || cfg.Intervals.MetricsSec != 30 {
 		t.Fatalf("unexpected defaults: %+v", cfg.Intervals)
 	}
 	if cfg.Xray.APITimeoutSec != 5 {
