@@ -53,8 +53,9 @@ type OnlineUsersPush struct {
 }
 
 type HeartbeatPush struct {
-	OK           bool   `json:"ok"`
-	AgentVersion string `json:"agent_version,omitempty"`
+	OK              bool   `json:"ok"`
+	AgentVersion    string `json:"agent_version,omitempty"`
+	XrayCoreVersion string `json:"xray_core_version,omitempty"`
 }
 
 type ServerMetricPush struct {

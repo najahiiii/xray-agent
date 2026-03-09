@@ -493,6 +493,10 @@ func installedVersion(ctx context.Context) string {
 	return ""
 }
 
+func InstalledVersion(ctx context.Context) string {
+	return installedVersion(ctx)
+}
+
 func normalizeVersion(v string) string {
 	return strings.TrimPrefix(strings.TrimSpace(v), "v")
 }

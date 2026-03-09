@@ -49,7 +49,7 @@ func TestRestartAgentAndAckFailedWhenRestartTriggerFails(t *testing.T) {
 	a := &Agent{
 		cfg:  cfg,
 		log:  logger,
-		ctrl: control.NewClient(cfg, logger, "v-test"),
+		ctrl: control.NewClient(cfg, logger, "v-test", "v25.10.15"),
 	}
 
 	originalRunner := systemctlRunner
@@ -99,7 +99,7 @@ func TestRestartAgentAndAckSucceededWhenRestartTriggerAccepted(t *testing.T) {
 	a := &Agent{
 		cfg:  cfg,
 		log:  logger,
-		ctrl: control.NewClient(cfg, logger, "v-test"),
+		ctrl: control.NewClient(cfg, logger, "v-test", "v25.10.15"),
 	}
 
 	originalRunner := systemctlRunner

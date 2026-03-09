@@ -18,13 +18,14 @@ import (
 )
 
 type Client struct {
-	cfg          *config.Config
-	client       *http.Client
-	log          *slog.Logger
-	agentVersion string
+	cfg             *config.Config
+	client          *http.Client
+	log             *slog.Logger
+	agentVersion    string
+	xrayCoreVersion string
 }
 
-func NewClient(cfg *config.Config, log *slog.Logger, agentVersion string) *Client {
+func NewClient(cfg *config.Config, log *slog.Logger, agentVersion string, xrayCoreVersion string) *Client {
 	tr := &http.Transport{
 		DialContext: (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
 		TLSClientConfig: &tls.Config{ //nolint:gosec
@@ -36,10 +37,11 @@ func NewClient(cfg *config.Config, log *slog.Logger, agentVersion string) *Clien
 		TLSHandshakeTimeout: 5 * time.Second,
 	}
 	return &Client{
-		cfg:          cfg,
-		client:       &http.Client{Transport: tr, Timeout: 12 * time.Second},
-		log:          log,
-		agentVersion: agentVersion,
+		cfg:             cfg,
+		client:          &http.Client{Transport: tr, Timeout: 12 * time.Second},
+		log:             log,
+		agentVersion:    agentVersion,
+		xrayCoreVersion: xrayCoreVersion,
 	}
 }
 
@@ -165,6 +167,9 @@ func (c *Client) Heartbeat(ctx context.Context) error {
 	payload := model.HeartbeatPush{OK: true}
 	if c.agentVersion != "" {
 		payload.AgentVersion = c.agentVersion
+	}
+	if c.xrayCoreVersion != "" {
+		payload.XrayCoreVersion = c.xrayCoreVersion
 	}
 
 	var buf bytes.Buffer

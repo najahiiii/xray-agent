@@ -218,7 +218,12 @@ func runAgentArgs(args []string) {
 
 	ensureCore(ctx, log, targetCoreVersion, targetGitHubToken)
 
-	ctrl := control.NewClient(cfg, log, strings.TrimSpace(embeddedVersion))
+	ctrl := control.NewClient(
+		cfg,
+		log,
+		strings.TrimSpace(embeddedVersion),
+		strings.TrimSpace(xraycore.InstalledVersion(ctx)),
+	)
 	xm := xray.NewManager(cfg, log)
 	stats := internalStats.New(cfg, log)
 	metricCollector := metrics.New(log)
