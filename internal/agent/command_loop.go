@@ -139,7 +139,7 @@ func (a *Agent) syncStateAfterCoreRestart(ctx context.Context) error {
 
 	for attempt := 1; attempt <= coreRestartSyncRetries; attempt++ {
 		syncCtx, cancel := context.WithTimeout(ctx, coreRestartSyncTimeout)
-		err := a.syncStateOnce(syncCtx)
+		err := a.syncStateAfterRuntimeReset(syncCtx)
 		cancel()
 		if err == nil {
 			a.log.Info("immediate state sync after core restart completed", "attempt", attempt)

@@ -75,6 +75,14 @@ func (a *Agent) runStateLoop(ctx context.Context) {
 }
 
 func (a *Agent) syncStateOnce(ctx context.Context) error {
+	return a.syncState(ctx, false)
+}
+
+func (a *Agent) syncStateAfterRuntimeReset(ctx context.Context) error {
+	return a.syncState(ctx, true)
+}
+
+func (a *Agent) syncState(ctx context.Context, assumeEmptyRuntime bool) error {
 	a.syncMu.Lock()
 	defer a.syncMu.Unlock()
 
@@ -92,13 +100,29 @@ func (a *Agent) syncStateOnce(ctx context.Context) error {
 		)
 	}
 
-	if a.state.IsUnchanged(ds.ConfigVersion, ds.Clients, normalizedRoutes) {
+	if !assumeEmptyRuntime && a.state.IsUnchanged(ds.ConfigVersion, ds.Clients, normalizedRoutes) {
 		a.log.Debug("state unchanged")
 		return nil
 	}
 
 	current := a.state.ClientsSnapshot()
 	currentRoutes := a.state.RoutesSnapshot()
+	if assumeEmptyRuntime {
+		current = map[string]model.Client{}
+		currentRoutes = map[string]model.RouteRule{}
+		if a.log != nil {
+			a.log.Info(
+				"forcing full state reapply after xray runtime reset",
+				"version",
+				ds.ConfigVersion,
+				"clients",
+				len(ds.Clients),
+				"routes",
+				len(normalizedRoutes),
+			)
+		}
+	}
+
 	changed, err := a.xray.State(ctx, current, ds.Clients, currentRoutes, normalizedRoutes)
 	if err != nil {
 		return err

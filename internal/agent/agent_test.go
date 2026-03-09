@@ -120,6 +120,45 @@ func TestAgentSyncStateOnce(t *testing.T) {
 	}
 }
 
+func TestSyncStateAfterRuntimeResetReappliesCachedClients(t *testing.T) {
+	rec, addr, closeFn := startHandler(t)
+	defer closeFn()
+
+	cfg := newTestConfig(addr)
+
+	stateResp := model.State{
+		ConfigVersion: 7,
+		Clients: []model.Client{
+			{Proto: "vless", ID: "1", Email: "user@example.com"},
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(stateResp)
+	}))
+	defer srv.Close()
+	cfg.Control.BaseURL = srv.URL
+
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctrl := control.NewClient(cfg, log, "v1.0.3", "v25.10.15")
+	manager := xray.NewManager(cfg, log)
+	collector := stats.New(cfg, log)
+
+	a := New(cfg, log, ctrl, manager, collector, nil)
+	a.state.Update(stateResp.ConfigVersion, stateResp.Clients, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	if err := a.syncStateAfterRuntimeReset(ctx); err != nil {
+		t.Fatalf("syncStateAfterRuntimeReset: %v", err)
+	}
+
+	if len(rec.adds) != 1 || rec.adds[0] != "user@example.com" {
+		t.Fatalf("expected re-add after runtime reset, got %+v", rec.adds)
+	}
+}
+
 func TestCollectOnlineSnapshot(t *testing.T) {
 	addr, closeFn := statsTestServer(t, nil, map[string]map[string]int64{
 		"User@example.com": {
