@@ -53,12 +53,12 @@ func TestRestartAgentAndAckFailedWhenRestartTriggerFails(t *testing.T) {
 		ctrl: control.NewClient(cfg, logger, "v-test", "v25.10.15"),
 	}
 
-	originalRunner := systemctlRunner
-	systemctlRunner = func(_ context.Context, _ ...string) error {
-		return errors.New("restart failed")
+	originalScheduler := agentRestartScheduler
+	agentRestartScheduler = func(_ context.Context) error {
+		return errors.New("schedule failed")
 	}
 	t.Cleanup(func() {
-		systemctlRunner = originalRunner
+		agentRestartScheduler = originalScheduler
 	})
 
 	err := a.restartAgentAndAck("cmd-1", time.Date(2026, time.March, 5, 12, 0, 0, 0, time.UTC))
@@ -69,15 +69,15 @@ func TestRestartAgentAndAckFailedWhenRestartTriggerFails(t *testing.T) {
 	if ack.Status != model.AgentCommandAckFailed {
 		t.Fatalf("expected FAILED status, got %s", ack.Status)
 	}
-	if !strings.Contains(ack.ErrorMessage, "restart failed") {
+	if !strings.Contains(ack.ErrorMessage, "schedule failed") {
 		t.Fatalf("unexpected error message: %q", ack.ErrorMessage)
 	}
-	if mode, ok := ack.Result["mode"].(string); !ok || mode != "restart_trigger_failed" {
+	if mode, ok := ack.Result["mode"].(string); !ok || mode != "restart_schedule_failed" {
 		t.Fatalf("unexpected mode: %#v", ack.Result["mode"])
 	}
 }
 
-func TestRestartAgentAndAckSucceededWhenRestartTriggerAccepted(t *testing.T) {
+func TestRestartAgentAndAckSucceededWhenRestartScheduled(t *testing.T) {
 	var ack model.AgentCommandAck
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -103,19 +103,12 @@ func TestRestartAgentAndAckSucceededWhenRestartTriggerAccepted(t *testing.T) {
 		ctrl: control.NewClient(cfg, logger, "v-test", "v25.10.15"),
 	}
 
-	originalRunner := systemctlRunner
-	systemctlRunner = func(_ context.Context, args ...string) error {
-		if len(args) != 3 {
-			t.Fatalf("unexpected args: %#v", args)
-		}
-		expected := []string{"restart", "--no-block", "xray-agent"}
-		if args[0] != expected[0] || args[1] != expected[1] || args[2] != expected[2] {
-			t.Fatalf("unexpected args: %#v", args)
-		}
+	originalScheduler := agentRestartScheduler
+	agentRestartScheduler = func(_ context.Context) error {
 		return nil
 	}
 	t.Cleanup(func() {
-		systemctlRunner = originalRunner
+		agentRestartScheduler = originalScheduler
 	})
 
 	err := a.restartAgentAndAck("cmd-2", time.Date(2026, time.March, 5, 12, 5, 0, 0, time.UTC))
@@ -129,7 +122,7 @@ func TestRestartAgentAndAckSucceededWhenRestartTriggerAccepted(t *testing.T) {
 	if ack.ErrorMessage != "" {
 		t.Fatalf("expected empty error message, got %q", ack.ErrorMessage)
 	}
-	if mode, ok := ack.Result["mode"].(string); !ok || mode != "restart_triggered" {
+	if mode, ok := ack.Result["mode"].(string); !ok || mode != "restart_scheduled" {
 		t.Fatalf("unexpected mode: %#v", ack.Result["mode"])
 	}
 }
@@ -215,18 +208,9 @@ func TestUpdateAgentAndAckTriggersRestartAfterInstall(t *testing.T) {
 		ctrl: control.NewClient(cfg, logger, "v1.0.5", "v25.10.15"),
 	}
 
-	originalRunner := systemctlRunner
+	originalScheduler := agentRestartScheduler
 	originalUpdater := agentUpdater
-	systemctlRunner = func(_ context.Context, args ...string) error {
-		expected := []string{"restart", "--no-block", "xray-agent"}
-		if len(args) != len(expected) {
-			t.Fatalf("unexpected args: %#v", args)
-		}
-		for index, value := range expected {
-			if args[index] != value {
-				t.Fatalf("unexpected args: %#v", args)
-			}
-		}
+	agentRestartScheduler = func(_ context.Context) error {
 		return nil
 	}
 	agentUpdater = func(_ context.Context, currentVersion string, opts selfupdate.Options) (*selfupdate.InstallResult, error) {
@@ -246,7 +230,7 @@ func TestUpdateAgentAndAckTriggersRestartAfterInstall(t *testing.T) {
 		}, nil
 	}
 	t.Cleanup(func() {
-		systemctlRunner = originalRunner
+		agentRestartScheduler = originalScheduler
 		agentUpdater = originalUpdater
 	})
 
@@ -265,7 +249,7 @@ func TestUpdateAgentAndAckTriggersRestartAfterInstall(t *testing.T) {
 	if got, ok := ack.Result["target_version"].(string); !ok || got != "v1.0.6" {
 		t.Fatalf("unexpected target version in result: %#v", ack.Result["target_version"])
 	}
-	if got, ok := ack.Result["mode"].(string); !ok || got != "update_installed_restart_triggered" {
+	if got, ok := ack.Result["mode"].(string); !ok || got != "update_installed_restart_scheduled" {
 		t.Fatalf("unexpected mode: %#v", ack.Result["mode"])
 	}
 }

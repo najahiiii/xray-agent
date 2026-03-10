@@ -15,10 +15,12 @@ const (
 	coreRestartSyncRetries  = 6
 	coreRestartSyncInterval = 1 * time.Second
 	coreRestartSyncTimeout  = 5 * time.Second
+	agentRestartDelay       = "2s"
 )
 
 var systemctlRunner = runSystemctl
 var agentUpdater = selfupdate.InstallOrUpdate
+var agentRestartScheduler = scheduleAgentRestart
 
 func (a *Agent) runCommandLoop(ctx context.Context) {
 	intv := time.Duration(a.cfg.Intervals.StateSec) * time.Second
@@ -96,31 +98,36 @@ func (a *Agent) executeNextCommand(ctx context.Context) error {
 }
 
 func (a *Agent) restartAgentAndAck(commandID string, startedAt time.Time) error {
-	restartErr := systemctlRunner(context.Background(), "restart", "--no-block", "xray-agent")
-
 	ack := &model.AgentCommandAck{
 		Status: model.AgentCommandAckSucceeded,
 		Result: map[string]any{
 			"executed_at": startedAt.Format(time.RFC3339),
 			"type":        string(model.AgentCommandTypeRestartAgent),
-			"mode":        "restart_triggered",
+			"mode":        "restart_scheduled",
 		},
 	}
+	restartErr := agentRestartScheduler(context.Background())
 	if restartErr != nil {
 		ack.Status = model.AgentCommandAckFailed
 		ack.ErrorMessage = restartErr.Error()
-		ack.Result["mode"] = "restart_trigger_failed"
+		ack.Result["mode"] = "restart_schedule_failed"
 	}
 	if ackErr := a.ctrl.AckCommand(context.Background(), commandID, ack); ackErr != nil {
 		return fmt.Errorf("ack command %s: %w", commandID, ackErr)
 	}
 
 	if restartErr != nil {
-		a.log.Warn("restart agent trigger failed", "command_id", commandID, "err", restartErr)
+		a.log.Warn(
+			"restart agent scheduling failed",
+			"command_id",
+			commandID,
+			"err",
+			restartErr,
+		)
 		return nil
 	}
 
-	a.log.Info("agent restart trigger accepted", "command_id", commandID)
+	a.log.Info("agent restart scheduled", "command_id", commandID)
 	return nil
 }
 
@@ -169,15 +176,15 @@ func (a *Agent) updateAgentAndAck(
 		return a.postCommandAck(commandID, ack)
 	}
 
-	restartErr := systemctlRunner(context.Background(), "restart", "--no-block", "xray-agent")
+	restartErr := agentRestartScheduler(context.Background())
 	if restartErr != nil {
 		ack.Status = model.AgentCommandAckFailed
 		ack.ErrorMessage = restartErr.Error()
-		ack.Result["mode"] = "update_installed_restart_trigger_failed"
+		ack.Result["mode"] = "update_installed_restart_schedule_failed"
 		return a.postCommandAck(commandID, ack)
 	}
 
-	ack.Result["mode"] = "update_installed_restart_triggered"
+	ack.Result["mode"] = "update_installed_restart_scheduled"
 	return a.postCommandAck(commandID, ack)
 }
 
@@ -267,4 +274,33 @@ func runSystemctl(ctx context.Context, args ...string) error {
 	}
 
 	return fmt.Errorf("systemctl %s: %w", strings.Join(args, " "), err)
+}
+
+func scheduleAgentRestart(ctx context.Context) error {
+	cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	unit := fmt.Sprintf("xray-agent-restart-%d", time.Now().UnixNano())
+	cmd := exec.CommandContext(
+		cmdCtx,
+		"systemd-run",
+		"--quiet",
+		"--collect",
+		"--on-active="+agentRestartDelay,
+		"--unit="+unit,
+		"systemctl",
+		"restart",
+		"xray-agent",
+	)
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+
+	message := strings.TrimSpace(string(output))
+	if message != "" {
+		return fmt.Errorf("schedule agent restart failed: %s", message)
+	}
+
+	return fmt.Errorf("schedule agent restart: %w", err)
 }
