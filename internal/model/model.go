@@ -14,12 +14,14 @@ type AgentCommandType string
 const (
 	AgentCommandTypeRestartCore  AgentCommandType = "RESTART_CORE"
 	AgentCommandTypeRestartAgent AgentCommandType = "RESTART_AGENT"
+	AgentCommandTypeUpdateAgent  AgentCommandType = "UPDATE_AGENT"
 )
 
 type AgentCommand struct {
 	ID          string           `json:"id"`
 	Type        AgentCommandType `json:"type"`
 	RequestedAt time.Time        `json:"requested_at"`
+	Payload     map[string]any   `json:"payload,omitempty"`
 }
 
 type AgentCommandAckStatus string

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/najahiiii/xray-agent/internal/model"
+	"github.com/najahiiii/xray-agent/internal/selfupdate"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 )
 
 var systemctlRunner = runSystemctl
+var agentUpdater = selfupdate.InstallOrUpdate
 
 func (a *Agent) runCommandLoop(ctx context.Context) {
 	intv := time.Duration(a.cfg.Intervals.StateSec) * time.Second
@@ -54,6 +56,9 @@ func (a *Agent) executeNextCommand(ctx context.Context) error {
 
 	if command.Type == model.AgentCommandTypeRestartAgent {
 		return a.restartAgentAndAck(command.ID, startedAt)
+	}
+	if command.Type == model.AgentCommandTypeUpdateAgent {
+		return a.updateAgentAndAck(command.ID, startedAt, command.Payload)
 	}
 
 	execErr := a.executeAgentCommand(ctx, command.Type)
@@ -119,6 +124,70 @@ func (a *Agent) restartAgentAndAck(commandID string, startedAt time.Time) error 
 	return nil
 }
 
+func (a *Agent) updateAgentAndAck(
+	commandID string,
+	startedAt time.Time,
+	payload map[string]any,
+) error {
+	targetVersion := normalizeAgentUpdateVersion(payload)
+	ack := &model.AgentCommandAck{
+		Status: model.AgentCommandAckSucceeded,
+		Result: map[string]any{
+			"executed_at": startedAt.Format(time.RFC3339),
+			"type":        string(model.AgentCommandTypeUpdateAgent),
+			"mode":        "update_pending",
+		},
+	}
+
+	if targetVersion == "" {
+		ack.Status = model.AgentCommandAckFailed
+		ack.ErrorMessage = "target_version is required for agent update"
+		ack.Result["mode"] = "invalid_payload"
+		return a.postCommandAck(commandID, ack)
+	}
+
+	ack.Result["target_version"] = targetVersion
+
+	updateResult, updateErr := agentUpdater(context.Background(), a.ctrl.AgentVersion(), selfupdate.Options{
+		Version: targetVersion,
+		Token:   a.cfg.GitHub.Token,
+		Logger:  a.log,
+	})
+	if updateErr != nil {
+		ack.Status = model.AgentCommandAckFailed
+		ack.ErrorMessage = updateErr.Error()
+		ack.Result["mode"] = "update_failed"
+		return a.postCommandAck(commandID, ack)
+	}
+
+	ack.Result["from_version"] = updateResult.FromVersion
+	ack.Result["to_version"] = updateResult.ToVersion
+	ack.Result["updated"] = updateResult.Updated
+
+	if !updateResult.Updated {
+		ack.Result["mode"] = "already_current"
+		return a.postCommandAck(commandID, ack)
+	}
+
+	restartErr := systemctlRunner(context.Background(), "restart", "--no-block", "xray-agent")
+	if restartErr != nil {
+		ack.Status = model.AgentCommandAckFailed
+		ack.ErrorMessage = restartErr.Error()
+		ack.Result["mode"] = "update_installed_restart_trigger_failed"
+		return a.postCommandAck(commandID, ack)
+	}
+
+	ack.Result["mode"] = "update_installed_restart_triggered"
+	return a.postCommandAck(commandID, ack)
+}
+
+func (a *Agent) postCommandAck(commandID string, ack *model.AgentCommandAck) error {
+	if err := a.ctrl.AckCommand(context.Background(), commandID, ack); err != nil {
+		return fmt.Errorf("ack command %s: %w", commandID, err)
+	}
+	return nil
+}
+
 func (a *Agent) executeAgentCommand(ctx context.Context, commandType model.AgentCommandType) error {
 	switch commandType {
 	case model.AgentCommandTypeRestartCore:
@@ -132,6 +201,22 @@ func (a *Agent) executeAgentCommand(ctx context.Context, commandType model.Agent
 	default:
 		return fmt.Errorf("unsupported command type: %s", commandType)
 	}
+}
+
+func normalizeAgentUpdateVersion(payload map[string]any) string {
+	if len(payload) == 0 {
+		return ""
+	}
+
+	target, _ := payload["target_version"].(string)
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return ""
+	}
+	if strings.HasPrefix(target, "v") {
+		return target
+	}
+	return "v" + target
 }
 
 func (a *Agent) syncStateAfterCoreRestart(ctx context.Context) error {

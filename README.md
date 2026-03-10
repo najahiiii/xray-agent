@@ -142,6 +142,18 @@ sudo ./xray-agent run --config /etc/xray-agent/config.yaml
 
 Systemd unit (installed by setup subcommand): `/usr/lib/systemd/system/xray-agent.service` with `ExecStart=/usr/local/bin/xray-agent run --config /etc/xray-agent/config.yaml`.
 
+### Release and rollout
+
+- Tagging the repo with `v*` now publishes Linux release binaries via GitHub Actions:
+  - `xray-agent_linux_amd64`
+  - `xray-agent_linux_arm64`
+  - `checksums.txt`
+- The dashboard can enqueue an `UPDATE_AGENT` command so each node pulls the
+  requested release asset directly from GitHub, verifies its checksum, swaps
+  the installed binary, and restarts `xray-agent` through systemd.
+- Keep the `version` file aligned with the release tag. The release workflow
+  refuses to publish if `version` and the pushed tag differ.
+
 ## Control-panel contract
 
 ### `GET /api/agents/{server_slug}/state`

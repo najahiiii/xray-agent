@@ -15,6 +15,7 @@ import (
 	"github.com/najahiiii/xray-agent/internal/config"
 	"github.com/najahiiii/xray-agent/internal/control"
 	"github.com/najahiiii/xray-agent/internal/model"
+	"github.com/najahiiii/xray-agent/internal/selfupdate"
 )
 
 func TestRestartAgentAndAckFailedWhenRestartTriggerFails(t *testing.T) {
@@ -129,6 +130,142 @@ func TestRestartAgentAndAckSucceededWhenRestartTriggerAccepted(t *testing.T) {
 		t.Fatalf("expected empty error message, got %q", ack.ErrorMessage)
 	}
 	if mode, ok := ack.Result["mode"].(string); !ok || mode != "restart_triggered" {
+		t.Fatalf("unexpected mode: %#v", ack.Result["mode"])
+	}
+}
+
+func TestUpdateAgentAndAckFailsWithoutTargetVersion(t *testing.T) {
+	var ack model.AgentCommandAck
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &ack); err != nil {
+			t.Fatalf("decode ack: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{}
+	cfg.Control.BaseURL = server.URL
+	cfg.Control.Token = "token"
+	cfg.Control.ServerSlug = "sg"
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := &Agent{
+		cfg:  cfg,
+		log:  logger,
+		ctrl: control.NewClient(cfg, logger, "v1.0.5", "v25.10.15"),
+	}
+
+	originalRunner := systemctlRunner
+	originalUpdater := agentUpdater
+	systemctlRunner = func(_ context.Context, _ ...string) error {
+		t.Fatal("systemctlRunner should not be called")
+		return nil
+	}
+	agentUpdater = func(_ context.Context, _ string, _ selfupdate.Options) (*selfupdate.InstallResult, error) {
+		t.Fatal("agentUpdater should not be called")
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		systemctlRunner = originalRunner
+		agentUpdater = originalUpdater
+	})
+
+	err := a.updateAgentAndAck("cmd-update-1", time.Date(2026, time.March, 11, 8, 0, 0, 0, time.UTC), nil)
+	if err != nil {
+		t.Fatalf("updateAgentAndAck returned error: %v", err)
+	}
+
+	if ack.Status != model.AgentCommandAckFailed {
+		t.Fatalf("expected FAILED status, got %s", ack.Status)
+	}
+	if mode, ok := ack.Result["mode"].(string); !ok || mode != "invalid_payload" {
+		t.Fatalf("unexpected mode: %#v", ack.Result["mode"])
+	}
+}
+
+func TestUpdateAgentAndAckTriggersRestartAfterInstall(t *testing.T) {
+	var ack model.AgentCommandAck
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &ack); err != nil {
+			t.Fatalf("decode ack: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{}
+	cfg.Control.BaseURL = server.URL
+	cfg.Control.Token = "token"
+	cfg.Control.ServerSlug = "sg"
+	cfg.GitHub.Token = "gh-token"
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := &Agent{
+		cfg:  cfg,
+		log:  logger,
+		ctrl: control.NewClient(cfg, logger, "v1.0.5", "v25.10.15"),
+	}
+
+	originalRunner := systemctlRunner
+	originalUpdater := agentUpdater
+	systemctlRunner = func(_ context.Context, args ...string) error {
+		expected := []string{"restart", "--no-block", "xray-agent"}
+		if len(args) != len(expected) {
+			t.Fatalf("unexpected args: %#v", args)
+		}
+		for index, value := range expected {
+			if args[index] != value {
+				t.Fatalf("unexpected args: %#v", args)
+			}
+		}
+		return nil
+	}
+	agentUpdater = func(_ context.Context, currentVersion string, opts selfupdate.Options) (*selfupdate.InstallResult, error) {
+		if currentVersion != "v1.0.5" {
+			t.Fatalf("unexpected current version: %s", currentVersion)
+		}
+		if opts.Version != "v1.0.6" {
+			t.Fatalf("unexpected target version: %s", opts.Version)
+		}
+		if opts.Token != "gh-token" {
+			t.Fatalf("unexpected github token: %s", opts.Token)
+		}
+		return &selfupdate.InstallResult{
+			FromVersion: "v1.0.5",
+			ToVersion:   "v1.0.6",
+			Updated:     true,
+		}, nil
+	}
+	t.Cleanup(func() {
+		systemctlRunner = originalRunner
+		agentUpdater = originalUpdater
+	})
+
+	err := a.updateAgentAndAck(
+		"cmd-update-2",
+		time.Date(2026, time.March, 11, 8, 5, 0, 0, time.UTC),
+		map[string]any{"target_version": "1.0.6"},
+	)
+	if err != nil {
+		t.Fatalf("updateAgentAndAck returned error: %v", err)
+	}
+
+	if ack.Status != model.AgentCommandAckSucceeded {
+		t.Fatalf("expected SUCCEEDED status, got %s", ack.Status)
+	}
+	if got, ok := ack.Result["target_version"].(string); !ok || got != "v1.0.6" {
+		t.Fatalf("unexpected target version in result: %#v", ack.Result["target_version"])
+	}
+	if got, ok := ack.Result["mode"].(string); !ok || got != "update_installed_restart_triggered" {
 		t.Fatalf("unexpected mode: %#v", ack.Result["mode"])
 	}
 }

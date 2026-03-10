@@ -45,6 +45,10 @@ func NewClient(cfg *config.Config, log *slog.Logger, agentVersion string, xrayCo
 	}
 }
 
+func (c *Client) AgentVersion() string {
+	return c.agentVersion
+}
+
 func (c *Client) auth(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+c.cfg.Control.Token)
 }

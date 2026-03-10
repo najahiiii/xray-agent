@@ -1,0 +1,55 @@
+name: release-agent
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Verify tag matches version file
+        run: |
+          VERSION_FILE="$(tr -d '\n' < version)"
+          if [ "$VERSION_FILE" != "${GITHUB_REF_NAME}" ]; then
+            echo "version file ($VERSION_FILE) does not match tag (${GITHUB_REF_NAME})"
+            exit 1
+          fi
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build release binaries
+        run: |
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            GOOS=linux GOARCH="$arch" CGO_ENABLED=0 \
+              go build -trimpath -o "dist/xray-agent_linux_${arch}" ./
+          done
+          (
+            cd dist
+            sha256sum xray-agent_linux_amd64 xray-agent_linux_arm64 > checksums.txt
+          )
+
+      - name: Publish GitHub Release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/xray-agent_linux_amd64
+            dist/xray-agent_linux_arm64
+            dist/checksums.txt
