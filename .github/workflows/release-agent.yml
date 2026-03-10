@@ -39,7 +39,7 @@ jobs:
           mkdir -p dist
           for arch in amd64 arm64; do
             GOOS=linux GOARCH="$arch" CGO_ENABLED=0 \
-              go build -trimpath -o "dist/xray-agent_linux_${arch}" ./
+              go build -trimpath -ldflags "-w -s -buildid=" -o "dist/xray-agent_linux_${arch}" ./
           done
           (
             cd dist
