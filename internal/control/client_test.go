@@ -114,6 +114,43 @@ func TestClientStateAndPosts(t *testing.T) {
 	}
 }
 
+func TestClientSetXrayCoreVersionUpdatesHeartbeatPayload(t *testing.T) {
+	var heartbeat model.HeartbeatPush
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/agents/sg/heartbeat" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read heartbeat body: %v", err)
+		}
+		if err := json.Unmarshal(body, &heartbeat); err != nil {
+			t.Fatalf("decode heartbeat body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{}
+	cfg.Control.BaseURL = srv.URL
+	cfg.Control.Token = "token"
+	cfg.Control.ServerSlug = "sg"
+
+	client := NewClient(cfg, testLogger(), "v1.0.3", "v25.10.15")
+	client.SetXrayCoreVersion("v26.2.6")
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	if err := client.Heartbeat(ctx); err != nil {
+		t.Fatalf("Heartbeat: %v", err)
+	}
+
+	if heartbeat.XrayCoreVersion != "v26.2.6" {
+		t.Fatalf("unexpected xray core version: %s", heartbeat.XrayCoreVersion)
+	}
+}
+
 func floatPtr(v float64) *float64 {
 	return &v
 }

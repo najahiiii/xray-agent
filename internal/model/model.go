@@ -15,6 +15,7 @@ const (
 	AgentCommandTypeRestartCore  AgentCommandType = "RESTART_CORE"
 	AgentCommandTypeRestartAgent AgentCommandType = "RESTART_AGENT"
 	AgentCommandTypeUpdateAgent  AgentCommandType = "UPDATE_AGENT"
+	AgentCommandTypeUpdateCore   AgentCommandType = "UPDATE_CORE"
 )
 
 type AgentCommand struct {

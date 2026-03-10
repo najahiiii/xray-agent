@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/najahiiii/xray-agent/internal/config"
@@ -23,6 +24,7 @@ type Client struct {
 	log             *slog.Logger
 	agentVersion    string
 	xrayCoreVersion string
+	versionMu       sync.RWMutex
 }
 
 func NewClient(cfg *config.Config, log *slog.Logger, agentVersion string, xrayCoreVersion string) *Client {
@@ -47,6 +49,12 @@ func NewClient(cfg *config.Config, log *slog.Logger, agentVersion string, xrayCo
 
 func (c *Client) AgentVersion() string {
 	return c.agentVersion
+}
+
+func (c *Client) SetXrayCoreVersion(version string) {
+	c.versionMu.Lock()
+	defer c.versionMu.Unlock()
+	c.xrayCoreVersion = version
 }
 
 func (c *Client) auth(req *http.Request) {
@@ -169,11 +177,14 @@ func (c *Client) PostMetrics(ctx context.Context, p *model.ServerMetricPush) err
 func (c *Client) Heartbeat(ctx context.Context) error {
 	url := fmt.Sprintf("%s/api/agents/%s/heartbeat", c.cfg.Control.BaseURL, c.cfg.Control.ServerSlug)
 	payload := model.HeartbeatPush{OK: true}
+	c.versionMu.RLock()
+	xrayCoreVersion := c.xrayCoreVersion
+	c.versionMu.RUnlock()
 	if c.agentVersion != "" {
 		payload.AgentVersion = c.agentVersion
 	}
-	if c.xrayCoreVersion != "" {
-		payload.XrayCoreVersion = c.xrayCoreVersion
+	if xrayCoreVersion != "" {
+		payload.XrayCoreVersion = xrayCoreVersion
 	}
 
 	var buf bytes.Buffer

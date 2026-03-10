@@ -16,6 +16,7 @@ import (
 	"github.com/najahiiii/xray-agent/internal/control"
 	"github.com/najahiiii/xray-agent/internal/model"
 	"github.com/najahiiii/xray-agent/internal/selfupdate"
+	"github.com/najahiiii/xray-agent/internal/xraycore"
 )
 
 func TestRestartAgentAndAckFailedWhenRestartTriggerFails(t *testing.T) {
@@ -251,5 +252,103 @@ func TestUpdateAgentAndAckTriggersRestartAfterInstall(t *testing.T) {
 	}
 	if got, ok := ack.Result["mode"].(string); !ok || got != "update_installed_restart_scheduled" {
 		t.Fatalf("unexpected mode: %#v", ack.Result["mode"])
+	}
+}
+
+func TestUpdateCoreAndAckRestartsCoreAndRefreshesHeartbeat(t *testing.T) {
+	var ack model.AgentCommandAck
+	var heartbeat model.HeartbeatPush
+	heartbeatHits := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/ack"):
+			if err := json.Unmarshal(body, &ack); err != nil {
+				t.Fatalf("decode ack: %v", err)
+			}
+		case strings.HasSuffix(r.URL.Path, "/heartbeat"):
+			heartbeatHits += 1
+			if err := json.Unmarshal(body, &heartbeat); err != nil {
+				t.Fatalf("decode heartbeat: %v", err)
+			}
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{}
+	cfg.Control.BaseURL = server.URL
+	cfg.Control.Token = "token"
+	cfg.Control.ServerSlug = "sg"
+	cfg.GitHub.Token = "gh-token"
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := &Agent{
+		cfg:  cfg,
+		log:  logger,
+		ctrl: control.NewClient(cfg, logger, "v1.0.5", "v26.1.23"),
+	}
+
+	originalRunner := systemctlRunner
+	originalUpdater := coreUpdater
+	originalSyncer := coreRestartSyncer
+	systemctlRunner = func(_ context.Context, args ...string) error {
+		if len(args) != 2 || args[0] != "restart" || args[1] != "xray" {
+			t.Fatalf("unexpected systemctl args: %v", args)
+		}
+		return nil
+	}
+	coreUpdater = func(_ context.Context, opts xraycore.Options) (*xraycore.InstallResult, error) {
+		if opts.Version != "v26.2.6" {
+			t.Fatalf("unexpected target version: %s", opts.Version)
+		}
+		if opts.Token != "gh-token" {
+			t.Fatalf("unexpected github token: %s", opts.Token)
+		}
+		return &xraycore.InstallResult{
+			FromVersion: "v26.1.23",
+			ToVersion:   "v26.2.6",
+			Updated:     true,
+		}, nil
+	}
+	coreRestartSyncer = func(_ *Agent, _ context.Context) error {
+		return nil
+	}
+	t.Cleanup(func() {
+		systemctlRunner = originalRunner
+		coreUpdater = originalUpdater
+		coreRestartSyncer = originalSyncer
+	})
+
+	err := a.updateCoreAndAck(
+		"cmd-core-1",
+		time.Date(2026, time.March, 11, 9, 0, 0, 0, time.UTC),
+		map[string]any{"target_version": "26.2.6"},
+	)
+	if err != nil {
+		t.Fatalf("updateCoreAndAck returned error: %v", err)
+	}
+
+	if ack.Status != model.AgentCommandAckSucceeded {
+		t.Fatalf("expected SUCCEEDED status, got %s", ack.Status)
+	}
+	if got, ok := ack.Result["target_version"].(string); !ok || got != "v26.2.6" {
+		t.Fatalf("unexpected target version in result: %#v", ack.Result["target_version"])
+	}
+	if got, ok := ack.Result["mode"].(string); !ok || got != "update_installed_restart_completed" {
+		t.Fatalf("unexpected mode: %#v", ack.Result["mode"])
+	}
+	if heartbeatHits != 1 {
+		t.Fatalf("expected 1 heartbeat refresh, got %d", heartbeatHits)
+	}
+	if heartbeat.XrayCoreVersion != "v26.2.6" {
+		t.Fatalf("unexpected xray core version in heartbeat: %s", heartbeat.XrayCoreVersion)
 	}
 }
