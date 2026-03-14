@@ -18,6 +18,7 @@ import (
 	"github.com/najahiiii/xray-agent/internal/model"
 	"github.com/najahiiii/xray-agent/internal/stats"
 	"github.com/najahiiii/xray-agent/internal/xray"
+	"github.com/najahiiii/xray-agent/internal/xraycore"
 
 	handlerService "github.com/xtls/xray-core/app/proxyman/command"
 	statscommand "github.com/xtls/xray-core/app/stats/command"
@@ -77,6 +78,7 @@ func newTestConfig(api string) *config.Config {
 	cfg.Intervals.StatsSec = 60
 	cfg.Intervals.HeartbeatSec = 30
 	cfg.Intervals.MetricsSec = 30
+	cfg.Intervals.CoreCheckSec = 43200
 	return cfg
 }
 
@@ -188,6 +190,98 @@ func TestCollectOnlineSnapshot(t *testing.T) {
 	}
 	if len(payload.Users[0].IPs) != 1 || payload.Users[0].IPs[0].Address != "203.0.113.10" {
 		t.Fatalf("unexpected ips: %+v", payload.Users[0].IPs)
+	}
+}
+
+func TestCheckCoreUpdateOnceUsesLatestRelease(t *testing.T) {
+	originalChecker := xrayCoreChecker
+	t.Cleanup(func() {
+		xrayCoreChecker = originalChecker
+	})
+
+	cfg := newTestConfig("127.0.0.1:10085")
+	cfg.GitHub.Token = "gh-token"
+
+	var called bool
+	xrayCoreChecker = func(_ context.Context, opts xraycore.Options) (*xraycore.CheckResult, error) {
+		called = true
+		if opts.Version != "" {
+			t.Fatalf("expected empty version for latest release check, got %q", opts.Version)
+		}
+		if opts.Token != "gh-token" {
+			t.Fatalf("unexpected github token: %q", opts.Token)
+		}
+		return &xraycore.CheckResult{
+			InstalledVersion: "v25.10.15",
+			LatestVersion:    "v26.2.6",
+			UpdateAvailable:  true,
+		}, nil
+	}
+
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := New(cfg, log, control.NewClient(cfg, log, "v1.0.3", "v25.10.15"), nil, nil, nil)
+
+	res, err := a.checkCoreUpdateOnce(context.Background())
+	if err != nil {
+		t.Fatalf("checkCoreUpdateOnce: %v", err)
+	}
+	if !called {
+		t.Fatal("expected xrayCoreChecker to be called")
+	}
+	if res == nil || !res.UpdateAvailable {
+		t.Fatalf("unexpected check result: %+v", res)
+	}
+}
+
+func TestRunCoreUpdateLoopChecksInBackground(t *testing.T) {
+	originalChecker := xrayCoreChecker
+	t.Cleanup(func() {
+		xrayCoreChecker = originalChecker
+	})
+
+	cfg := newTestConfig("127.0.0.1:10085")
+	cfg.GitHub.Token = "gh-token"
+	cfg.Intervals.CoreCheckSec = 3600
+
+	checkCalled := make(chan xraycore.Options, 1)
+	xrayCoreChecker = func(_ context.Context, opts xraycore.Options) (*xraycore.CheckResult, error) {
+		select {
+		case checkCalled <- opts:
+		default:
+		}
+		return &xraycore.CheckResult{
+			InstalledVersion: "v25.10.15",
+			LatestVersion:    "v26.2.6",
+			UpdateAvailable:  true,
+		}, nil
+	}
+
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := New(cfg, log, control.NewClient(cfg, log, "v1.0.3", "v25.10.15"), nil, nil, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		a.runCoreUpdateLoop(ctx)
+		close(done)
+	}()
+
+	select {
+	case opts := <-checkCalled:
+		if opts.Version != "" {
+			t.Fatalf("expected empty version for background latest-release check, got %q", opts.Version)
+		}
+		cancel()
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for background core check")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for core update loop to stop")
 	}
 }
 

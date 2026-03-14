@@ -14,9 +14,12 @@ import (
 	"github.com/najahiiii/xray-agent/internal/state"
 	"github.com/najahiiii/xray-agent/internal/stats"
 	"github.com/najahiiii/xray-agent/internal/xray"
+	"github.com/najahiiii/xray-agent/internal/xraycore"
 
 	"log/slog"
 )
+
+var xrayCoreChecker = xraycore.Check
 
 type Agent struct {
 	cfg     *config.Config
@@ -51,6 +54,7 @@ func (a *Agent) Start(ctx context.Context) {
 	go a.runMetricsLoop(ctx)
 	go a.runHeartbeatLoop(ctx)
 	go a.runCommandLoop(ctx)
+	go a.runCoreUpdateLoop(ctx)
 }
 
 func (a *Agent) runStateLoop(ctx context.Context) {
@@ -268,6 +272,69 @@ func (a *Agent) runMetricsLoop(ctx context.Context) {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (a *Agent) runCoreUpdateLoop(ctx context.Context) {
+	if a.ctrl == nil {
+		return
+	}
+
+	intv := time.Duration(a.cfg.Intervals.CoreCheckSec) * time.Second
+	if intv == 0 {
+		intv = time.Duration(config.DefaultCoreCheckIntervalSec) * time.Second
+	}
+	if intv < 0 {
+		return
+	}
+
+	ticker := time.NewTicker(intv)
+	defer ticker.Stop()
+
+	var (
+		lastInstalled       string
+		lastLatest          string
+		lastUpdateAvailable bool
+		hasLastResult       bool
+	)
+
+	for {
+		res, err := a.checkCoreUpdateOnce(ctx)
+		if err != nil {
+			a.log.Warn("xray-core update check failed", "err", err)
+		} else if res != nil {
+			if res.InstalledVersion != "" {
+				a.ctrl.SetXrayCoreVersion(res.InstalledVersion)
+			}
+
+			if !hasLastResult ||
+				lastInstalled != res.InstalledVersion ||
+				lastLatest != res.LatestVersion ||
+				lastUpdateAvailable != res.UpdateAvailable {
+				if res.UpdateAvailable {
+					a.log.Info("xray-core update available", "installed", res.InstalledVersion, "latest", res.LatestVersion)
+				} else {
+					a.log.Debug("xray-core up-to-date", "installed", res.InstalledVersion, "latest", res.LatestVersion)
+				}
+
+				lastInstalled = res.InstalledVersion
+				lastLatest = res.LatestVersion
+				lastUpdateAvailable = res.UpdateAvailable
+				hasLastResult = true
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (a *Agent) checkCoreUpdateOnce(ctx context.Context) (*xraycore.CheckResult, error) {
+	return xrayCoreChecker(ctx, xraycore.Options{
+		Token: a.cfg.GitHub.Token,
+	})
 }
 
 func (a *Agent) collectMetricsSample(ctx context.Context) *model.ServerMetricPush {

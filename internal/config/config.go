@@ -15,6 +15,7 @@ const (
 	DefaultStatsIntervalSec     = 60
 	DefaultHeartbeatIntervalSec = 30
 	DefaultMetricsIntervalSec   = 30
+	DefaultCoreCheckIntervalSec = 43200
 	DefaultAPITimeoutSec        = 5
 )
 
@@ -48,6 +49,7 @@ type Config struct {
 		StatsSec     int `yaml:"stats_sec"`
 		HeartbeatSec int `yaml:"heartbeat_sec"`
 		MetricsSec   int `yaml:"metrics_sec"`
+		CoreCheckSec int `yaml:"core_check_sec"`
 	} `yaml:"intervals"`
 
 	Logging struct {
@@ -89,6 +91,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Intervals.MetricsSec == 0 {
 		cfg.Intervals.MetricsSec = DefaultMetricsIntervalSec
+	}
+	if cfg.Intervals.CoreCheckSec == 0 {
+		cfg.Intervals.CoreCheckSec = DefaultCoreCheckIntervalSec
 	}
 	if cfg.Xray.APITimeoutSec <= 0 {
 		cfg.Xray.APITimeoutSec = DefaultAPITimeoutSec
