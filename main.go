@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -29,6 +30,11 @@ const defaultConfigPath = "/etc/xray-agent/config.yaml"
 //go:embed version
 var embeddedVersion string
 
+var (
+	xrayCoreInstaller        = xraycore.InstallOrUpdate
+	xrayCoreInstalledVersion = xraycore.InstalledVersion
+)
+
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 {
@@ -53,19 +59,31 @@ func main() {
 }
 
 func coreCommand(args []string) {
-	fs := flag.NewFlagSet("core", flag.ExitOnError)
+	if err := runCoreCommand(args); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func runCoreCommand(args []string) error {
+	fs := flag.NewFlagSet("core", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	action := fs.String("action", "check", "core action: check|install")
 	version := fs.String("version", "", "target xray-core version (default internal)")
 	ghTokenFlag := fs.String("github-token", "", "GitHub token (optional)")
 	cfgPath := fs.String("config", defaultConfigPath, "config path (optional, to read defaults)")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 
 	log := logger.New("info")
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	var cfgFromFile *config.Config
-	if c, err := loadConfigIfExists(*cfgPath); err == nil {
+	if c, err := loadConfigIfExists(*cfgPath); err != nil {
+		return fmt.Errorf("load config: %w", err)
+	} else {
 		cfgFromFile = c
 	}
 
@@ -93,21 +111,19 @@ func coreCommand(args []string) {
 	case "check":
 		res, err := xraycore.Check(ctx, opts)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "xray-core check: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("xray-core check: %w", err)
 		}
 		log.Info("xray-core check", "installed", res.InstalledVersion, "latest", res.LatestVersion, "update_available", res.UpdateAvailable)
 	case "install", "update":
 		res, err := xraycore.InstallOrUpdate(ctx, opts)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "xray-core install: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("xray-core install: %w", err)
 		}
 		log.Info("xray-core install", "from", res.FromVersion, "to", res.ToVersion, "updated", res.Updated)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown core action: %s\n", *action)
-		os.Exit(1)
+		return fmt.Errorf("unknown core action: %s", *action)
 	}
+	return nil
 }
 
 func setupCommand(args []string) {
@@ -216,7 +232,10 @@ func runAgentArgs(args []string) {
 	}
 	targetGitHubToken := resolveGitHubToken(*ghTokenFlag, cfg.GitHub.Token)
 
-	ensureCore(ctx, log, targetCoreVersion, targetGitHubToken)
+	if err := ensureCore(ctx, log, targetCoreVersion, targetGitHubToken); err != nil {
+		fmt.Fprintf(os.Stderr, "ensure xray-core: %v\n", err)
+		os.Exit(1)
+	}
 
 	ctrl := control.NewClient(
 		cfg,
@@ -235,31 +254,30 @@ func runAgentArgs(args []string) {
 	log.Info("agent stopped")
 }
 
-func ensureCore(ctx context.Context, log *slog.Logger, version string, ghToken string) {
+func ensureCore(ctx context.Context, log *slog.Logger, version string, ghToken string) error {
 	if version == "" {
 		version = config.DefaultXrayVersion
 	}
-	opts := xraycore.Options{
+
+	installed := strings.TrimSpace(xrayCoreInstalledVersion(ctx))
+	if installed != "" {
+		if sameVersion(installed, version) {
+			log.Debug("xray-core up-to-date", "version", installed)
+		} else {
+			log.Warn("xray-core version differs from target", "installed", installed, "target", version)
+		}
+		return nil
+	}
+
+	log.Info("installing xray-core", "target", version)
+	if _, err := xrayCoreInstaller(ctx, xraycore.Options{
 		Version: version,
 		Logger:  log,
 		Token:   ghToken,
+	}); err != nil {
+		return err
 	}
-	res, err := xraycore.Check(ctx, opts)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "xray-core check failed: %v\n", err)
-		os.Exit(1)
-	}
-	if res.InstalledVersion == "" {
-		log.Info("installing xray-core", "target", res.LatestVersion)
-		if _, err := xraycore.InstallOrUpdate(ctx, opts); err != nil {
-			fmt.Fprintf(os.Stderr, "xray-core install/update failed: %v\n", err)
-			os.Exit(1)
-		}
-	} else if res.UpdateAvailable {
-		log.Info("xray-core update available", "installed", res.InstalledVersion, "latest", res.LatestVersion)
-	} else {
-		log.Debug("xray-core up-to-date", "version", res.InstalledVersion)
-	}
+	return nil
 }
 
 func resolveGitHubToken(flagVal string, cfgVal string) string {
@@ -336,4 +354,8 @@ func parseBool(value string, field string) (*bool, error) {
 	default:
 		return nil, fmt.Errorf("invalid %s value: %s (use true/false)", field, value)
 	}
+}
+
+func sameVersion(a string, b string) bool {
+	return strings.TrimPrefix(strings.TrimSpace(a), "v") == strings.TrimPrefix(strings.TrimSpace(b), "v")
 }
