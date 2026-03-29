@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,7 +44,7 @@ func NewClient(cfg *config.Config, log *slog.Logger, agentVersion string, xrayCo
 		client:          &http.Client{Transport: tr, Timeout: 12 * time.Second},
 		log:             log,
 		agentVersion:    agentVersion,
-		xrayCoreVersion: xrayCoreVersion,
+		xrayCoreVersion: normalizeTaggedVersion(xrayCoreVersion),
 	}
 }
 
@@ -54,7 +55,18 @@ func (c *Client) AgentVersion() string {
 func (c *Client) SetXrayCoreVersion(version string) {
 	c.versionMu.Lock()
 	defer c.versionMu.Unlock()
-	c.xrayCoreVersion = version
+	c.xrayCoreVersion = normalizeTaggedVersion(version)
+}
+
+func normalizeTaggedVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return ""
+	}
+	if strings.HasPrefix(version, "v") {
+		return version
+	}
+	return "v" + version
 }
 
 func (c *Client) auth(req *http.Request) {

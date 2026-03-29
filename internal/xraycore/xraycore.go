@@ -486,9 +486,13 @@ func installedVersion(ctx context.Context) string {
 	if err != nil {
 		return ""
 	}
+	return parseInstalledVersionOutput(out)
+}
+
+func parseInstalledVersionOutput(out []byte) string {
 	fields := strings.Fields(string(out))
 	if len(fields) >= 2 {
-		return fields[1]
+		return ensureTagPrefix(fields[1])
 	}
 	return ""
 }

@@ -71,6 +71,39 @@ func TestEnsureTagPrefix(t *testing.T) {
 	}
 }
 
+func TestParseInstalledVersionOutput(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "plain version from xray binary",
+			in:   "Xray 26.3.27 (Xray, Penetrates Everything.) d2758a0 (go1.26.1 linux/amd64)\nA unified platform for anti-censorship.\n",
+			want: "v26.3.27",
+		},
+		{
+			name: "already tagged version",
+			in:   "Xray v26.3.27 (Xray, Penetrates Everything.)\n",
+			want: "v26.3.27",
+		},
+		{
+			name: "invalid output",
+			in:   "Xray\n",
+			want: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseInstalledVersionOutput([]byte(tc.in))
+			if got != tc.want {
+				t.Fatalf("parseInstalledVersionOutput(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPickAssetURLs(t *testing.T) {
 	rel := &releaseInfo{
 		Assets: []releaseAsset{
