@@ -94,7 +94,7 @@ HandlerService must be enabled in your Xray config:
 {
   "api": {
     "tag": "xray-api",
-    "services": ["HandlerService", "LoggerService", "StatsService"]
+    "services": ["HandlerService", "LoggerService", "StatsService", "RoutingService"]
   },
   "stats": {}
 }

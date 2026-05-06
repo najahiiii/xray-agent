@@ -39,12 +39,12 @@ func NewManager(cfg *config.Config, log *slog.Logger) *Manager {
 func (m *Manager) State(ctx context.Context, currentClients map[string]model.Client, desiredClients []model.Client, currentRoutes map[string]model.RouteRule, desiredRoutes []model.RouteRule) (bool, error) {
 	clientsChanged, err := m.applyViaHandler(ctx, currentClients, desiredClients)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("xray handler apply via %s: %w", m.cfg.Xray.APIServer, err)
 	}
 
 	routesChanged, err := m.applyRoutes(ctx, currentRoutes, desiredRoutes)
 	if err != nil {
-		return clientsChanged, err
+		return clientsChanged, fmt.Errorf("xray routing apply via %s: %w", m.cfg.Xray.APIServer, err)
 	}
 
 	return clientsChanged || routesChanged, nil
@@ -91,7 +91,10 @@ func (m *Manager) removeUser(ctx context.Context, client handlerService.HandlerS
 	defer cancel()
 
 	_, err := client.AlterInbound(callCtx, req)
-	return err
+	if err != nil {
+		return fmt.Errorf("remove user %q from inbound %q: %w", c.Email, tag, err)
+	}
+	return nil
 }
 
 func (m *Manager) addUser(ctx context.Context, client handlerService.HandlerServiceClient, c model.Client) error {
@@ -114,7 +117,10 @@ func (m *Manager) addUser(ctx context.Context, client handlerService.HandlerServ
 	defer cancel()
 
 	_, err = client.AlterInbound(callCtx, req)
-	return err
+	if err != nil {
+		return fmt.Errorf("add user %q to inbound %q: %w", c.Email, tag, err)
+	}
+	return nil
 }
 
 func (m *Manager) applyRoutes(ctx context.Context, current map[string]model.RouteRule, desired []model.RouteRule) (bool, error) {
@@ -154,7 +160,10 @@ func (m *Manager) removeRoute(ctx context.Context, client routerService.RoutingS
 	defer cancel()
 
 	_, err := client.RemoveRule(callCtx, req)
-	return err
+	if err != nil {
+		return fmt.Errorf("remove route %q: %w", r.Tag, err)
+	}
+	return nil
 }
 
 func (m *Manager) addRoute(ctx context.Context, client routerService.RoutingServiceClient, r model.RouteRule) error {
@@ -182,7 +191,10 @@ func (m *Manager) addRoute(ctx context.Context, client routerService.RoutingServ
 	defer cancel()
 
 	_, err = client.AddRule(callCtx, req)
-	return err
+	if err != nil {
+		return fmt.Errorf("add route %q: %w", r.Tag, err)
+	}
+	return nil
 }
 
 func isRouteNotFoundError(err error) bool {

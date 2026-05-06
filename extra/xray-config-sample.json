@@ -1,7 +1,12 @@
 {
   "api": {
-    "listen": "127.0.0.1:8080",
-    "services": ["HandlerService", "LoggerService", "StatsService"],
+    "listen": "127.0.0.1:10085",
+    "services": [
+      "HandlerService",
+      "LoggerService",
+      "StatsService",
+      "RoutingService"
+    ],
     "tag": "xray-api"
   },
   "inbounds": [
