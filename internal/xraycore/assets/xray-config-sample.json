@@ -102,8 +102,7 @@
         "tlsSettings": {
           "serverName": "id.zeph.my.id",
           "alpn": ["h3", "h2", "http/1.1"],
-          "fingerprint": "chrome",
-          "allowInsecure": true
+          "fingerprint": "chrome"
         },
         "wsSettings": {
           "path": "/vless/najahi",
