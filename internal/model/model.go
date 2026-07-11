@@ -62,12 +62,16 @@ type HeartbeatPush struct {
 }
 
 type ServerMetricPush struct {
-	ServerTime        time.Time     `json:"server_time"`
-	CPUPercent        *float64      `json:"cpu_percent,omitempty"`
-	MemoryPercent     *float64      `json:"memory_percent,omitempty"`
-	BandwidthDownMbps *float64      `json:"bandwidth_down_mbps,omitempty"`
-	BandwidthUpMbps   *float64      `json:"bandwidth_up_mbps,omitempty"`
-	XraySysStats      *XraySysStats `json:"xray_sys_stats,omitempty"`
+	ServerTime           time.Time     `json:"server_time"`
+	CPUPercent           *float64      `json:"cpu_percent,omitempty"`
+	MemoryPercent        *float64      `json:"memory_percent,omitempty"`
+	MemoryTotalBytes     *uint64       `json:"memory_total_bytes,omitempty"`
+	MemoryUsedBytes      *uint64       `json:"memory_used_bytes,omitempty"`
+	MemoryFreeBytes      *uint64       `json:"memory_free_bytes,omitempty"`
+	MemoryAvailableBytes *uint64       `json:"memory_available_bytes,omitempty"`
+	BandwidthDownMbps    *float64      `json:"bandwidth_down_mbps,omitempty"`
+	BandwidthUpMbps      *float64      `json:"bandwidth_up_mbps,omitempty"`
+	XraySysStats         *XraySysStats `json:"xray_sys_stats,omitempty"`
 }
 
 type UserUsage struct {

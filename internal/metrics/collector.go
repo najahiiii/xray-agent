@@ -41,6 +41,10 @@ func (c *Collector) Sample(ctx context.Context) *model.ServerMetricPush {
 		c.log.Debug("metrics memory sample failed", "err", err)
 	} else if vm != nil {
 		sample.MemoryPercent = floatPtr(vm.UsedPercent)
+		sample.MemoryTotalBytes = uint64Ptr(vm.Total)
+		sample.MemoryUsedBytes = uint64Ptr(vm.Used)
+		sample.MemoryFreeBytes = uint64Ptr(vm.Free)
+		sample.MemoryAvailableBytes = uint64Ptr(vm.Available)
 		hasData = true
 	}
 
@@ -111,6 +115,11 @@ func bytesToMbps(delta uint64, seconds float64) float64 {
 }
 
 func floatPtr(value float64) *float64 {
+	v := value
+	return &v
+}
+
+func uint64Ptr(value uint64) *uint64 {
 	v := value
 	return &v
 }

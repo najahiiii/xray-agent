@@ -58,3 +58,13 @@ func TestFloatPtr(t *testing.T) {
 		t.Fatalf("floatPtr() value = %v, want %v", *got, 12.5)
 	}
 }
+
+func TestUint64Ptr(t *testing.T) {
+	got := uint64Ptr(1024)
+	if got == nil {
+		t.Fatal("uint64Ptr() returned nil")
+	}
+	if *got != 1024 {
+		t.Fatalf("uint64Ptr() value = %v, want %v", *got, uint64(1024))
+	}
+}
