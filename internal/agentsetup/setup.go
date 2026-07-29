@@ -33,9 +33,11 @@ type Options struct {
 	BinPath     string
 	GitHubToken string
 	BaseURL     string
+	SocketURL   string
 	Token       string
 	ServerSlug  string
 	TLSInsecure *bool
+	OutboxPath  string
 	Logger      *slog.Logger
 }
 
@@ -132,6 +134,9 @@ func applyOptionalFields(cfg *config.Config, opts Options) {
 	if opts.BaseURL != "" {
 		cfg.Control.BaseURL = opts.BaseURL
 	}
+	if opts.SocketURL != "" {
+		cfg.Control.SocketURL = opts.SocketURL
+	}
 	if opts.Token != "" {
 		cfg.Control.Token = opts.Token
 	}
@@ -140,6 +145,9 @@ func applyOptionalFields(cfg *config.Config, opts Options) {
 	}
 	if opts.TLSInsecure != nil {
 		cfg.Control.TLSInsecure = *opts.TLSInsecure
+	}
+	if opts.OutboxPath != "" {
+		cfg.Control.OutboxPath = opts.OutboxPath
 	}
 }
 
@@ -178,9 +186,11 @@ func installBinary(opts Options) error {
 type UpdateControlOptions struct {
 	ConfigPath  string
 	BaseURL     string
+	SocketURL   string
 	Token       string
 	ServerSlug  string
 	TLSInsecure *bool
+	OutboxPath  string
 	GitHubToken string
 	Logger      *slog.Logger
 	Restart     bool
@@ -194,7 +204,7 @@ func UpdateControl(ctx context.Context, opts UpdateControlOptions) error {
 	}
 	log := opts.Logger
 
-	if opts.BaseURL == "" && opts.Token == "" && opts.ServerSlug == "" && opts.TLSInsecure == nil && opts.GitHubToken == "" {
+	if opts.BaseURL == "" && opts.SocketURL == "" && opts.Token == "" && opts.ServerSlug == "" && opts.TLSInsecure == nil && opts.OutboxPath == "" && opts.GitHubToken == "" {
 		return fmt.Errorf("no control fields provided for update")
 	}
 
@@ -206,6 +216,9 @@ func UpdateControl(ctx context.Context, opts UpdateControlOptions) error {
 	if opts.BaseURL != "" {
 		cfg.Control.BaseURL = opts.BaseURL
 	}
+	if opts.SocketURL != "" {
+		cfg.Control.SocketURL = opts.SocketURL
+	}
 	if opts.Token != "" {
 		cfg.Control.Token = opts.Token
 	}
@@ -214,6 +227,9 @@ func UpdateControl(ctx context.Context, opts UpdateControlOptions) error {
 	}
 	if opts.TLSInsecure != nil {
 		cfg.Control.TLSInsecure = *opts.TLSInsecure
+	}
+	if opts.OutboxPath != "" {
+		cfg.Control.OutboxPath = opts.OutboxPath
 	}
 	if opts.GitHubToken != "" {
 		cfg.GitHub.Token = opts.GitHubToken

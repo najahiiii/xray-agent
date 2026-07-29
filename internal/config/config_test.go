@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -57,6 +58,16 @@ intervals:
 	}
 	if cfg.Xray.Version != DefaultXrayVersion {
 		t.Fatalf("expected default xray version %s, got %s", DefaultXrayVersion, cfg.Xray.Version)
+	}
+	if cfg.Control.OutboxPath != DefaultOutboxPath {
+		t.Fatalf("expected default outbox path %s, got %s", DefaultOutboxPath, cfg.Control.OutboxPath)
+	}
+}
+
+func TestLoadAcceptsSocketURLWithoutBaseURL(t *testing.T) {
+	path := writeConfig(t, strings.Replace(baseYAML, `base_url: "https://panel.example.com"`, `socket_url: "wss://panel.example.com/agent/ws"`, 1))
+	if _, err := Load(path); err != nil {
+		t.Fatalf("Load socket-only config: %v", err)
 	}
 }
 

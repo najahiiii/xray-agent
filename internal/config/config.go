@@ -10,6 +10,8 @@ import (
 
 const (
 	DefaultXrayVersion          = "v25.10.15"
+	DefaultSocketPath           = "/agent/ws"
+	DefaultOutboxPath           = "/var/lib/xray-agent/outbox.db"
 	DefaultStateIntervalSec     = 15
 	DefaultOnlineIntervalSec    = 10
 	DefaultStatsIntervalSec     = 60
@@ -22,9 +24,11 @@ const (
 type Config struct {
 	Control struct {
 		BaseURL     string `yaml:"base_url"`
+		SocketURL   string `yaml:"socket_url"`
 		Token       string `yaml:"token"`
 		ServerSlug  string `yaml:"server_slug"`
 		TLSInsecure bool   `yaml:"tls_insecure"`
+		OutboxPath  string `yaml:"outbox_path"`
 	} `yaml:"control"`
 
 	Xray struct {
@@ -68,8 +72,11 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	if cfg.Control.BaseURL == "" || cfg.Control.Token == "" || cfg.Control.ServerSlug == "" {
-		return nil, errors.New("control.base_url/token/server_slug required")
+	if (cfg.Control.BaseURL == "" && cfg.Control.SocketURL == "") || cfg.Control.Token == "" || cfg.Control.ServerSlug == "" {
+		return nil, errors.New("control.base_url or control.socket_url, plus token/server_slug required")
+	}
+	if cfg.Control.OutboxPath == "" {
+		cfg.Control.OutboxPath = DefaultOutboxPath
 	}
 	if cfg.Xray.APIServer == "" {
 		return nil, errors.New("xray.api_server required")

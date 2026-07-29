@@ -15,6 +15,7 @@ func TestStoreLifecycle(t *testing.T) {
 	}
 	routes := []model.RouteRule{
 		{Tag: "r1", OutboundTag: "direct", Domain: []string{"domain:example.com"}},
+		{Tag: "r2", OutboundTag: "blocked", Domain: []string{"geosite:ads"}},
 	}
 	if s.IsUnchanged(1, clients, routes) {
 		t.Fatal("expected mismatch before update")
@@ -36,8 +37,12 @@ func TestStoreLifecycle(t *testing.T) {
 	}
 
 	routeSnap := s.RoutesSnapshot()
-	if len(routeSnap) != 1 || routeSnap["r1"].OutboundTag != "direct" {
+	if len(routeSnap) != 2 || routeSnap["r1"].OutboundTag != "direct" {
 		t.Fatalf("route snapshot mismatch: %+v", routeSnap)
+	}
+	desired := s.DesiredStateSnapshot()
+	if len(desired.Routes) != 2 || desired.Routes[0].Tag != "r1" || desired.Routes[1].Tag != "r2" {
+		t.Fatalf("desired route order was not preserved: %+v", desired.Routes)
 	}
 
 	// ensure changed when routes differ

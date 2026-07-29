@@ -49,6 +49,22 @@ func (a *Agent) runCommandLoop(ctx context.Context) {
 	}
 }
 
+func (a *Agent) runSocketCommandLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case command := <-a.socket.Commands():
+			if command == nil {
+				continue
+			}
+			if err := a.executeCommand(ctx, command); err != nil {
+				a.log.Warn("socket command", "command_id", command.ID, "type", command.Type, "err", err)
+			}
+		}
+	}
+}
+
 func (a *Agent) executeNextCommand(ctx context.Context) error {
 	command, err := a.ctrl.GetNextCommand(ctx)
 	if err != nil {
@@ -57,7 +73,10 @@ func (a *Agent) executeNextCommand(ctx context.Context) error {
 	if command == nil {
 		return nil
 	}
+	return a.executeCommand(ctx, command)
+}
 
+func (a *Agent) executeCommand(ctx context.Context, command *model.AgentCommand) error {
 	startedAt := time.Now().UTC()
 	a.log.Info("executing agent command", "command_id", command.ID, "type", command.Type)
 
@@ -84,7 +103,7 @@ func (a *Agent) executeNextCommand(ctx context.Context) error {
 		ack.ErrorMessage = execErr.Error()
 	}
 
-	if ackErr := a.ctrl.AckCommand(ctx, command.ID, ack); ackErr != nil {
+	if ackErr := a.postCommandAck(command.ID, ack); ackErr != nil {
 		return fmt.Errorf("ack command %s: %w", command.ID, ackErr)
 	}
 
@@ -120,7 +139,7 @@ func (a *Agent) restartAgentAndAck(commandID string, startedAt time.Time) error 
 		ack.ErrorMessage = restartErr.Error()
 		ack.Result["mode"] = "restart_schedule_failed"
 	}
-	if ackErr := a.ctrl.AckCommand(context.Background(), commandID, ack); ackErr != nil {
+	if ackErr := a.postCommandAck(commandID, ack); ackErr != nil {
 		return fmt.Errorf("ack command %s: %w", commandID, ackErr)
 	}
 
@@ -235,7 +254,7 @@ func (a *Agent) updateCoreAndAck(
 	ack.Result["from_version"] = updateResult.FromVersion
 	ack.Result["to_version"] = updateResult.ToVersion
 	ack.Result["updated"] = updateResult.Updated
-	a.ctrl.SetXrayCoreVersion(resolveUpdatedCoreVersion(updateResult, targetVersion))
+	a.setXrayCoreVersion(resolveUpdatedCoreVersion(updateResult, targetVersion))
 
 	if !updateResult.Updated {
 		ack.Result["mode"] = "already_current"
@@ -268,6 +287,12 @@ func (a *Agent) updateCoreAndAck(
 }
 
 func (a *Agent) postCommandAck(commandID string, ack *model.AgentCommandAck) error {
+	if a.socket != nil {
+		if err := a.socket.QueueCommandAck(commandID, ack); err != nil {
+			return fmt.Errorf("queue command ack %s: %w", commandID, err)
+		}
+		return nil
+	}
 	if err := a.ctrl.AckCommand(context.Background(), commandID, ack); err != nil {
 		return fmt.Errorf("ack command %s: %w", commandID, err)
 	}
@@ -319,6 +344,9 @@ func resolveUpdatedCoreVersion(
 }
 
 func (a *Agent) refreshCoreVersionHeartbeat() error {
+	if a.socket != nil {
+		return a.socket.QueueHeartbeat()
+	}
 	return a.ctrl.Heartbeat(context.Background())
 }
 

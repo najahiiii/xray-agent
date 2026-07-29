@@ -1,8 +1,11 @@
 control:
   base_url: "https://panel.example.com"
+  # Optional override; defaults to wss://panel.example.com/agent/ws.
+  socket_url: ""
   token: "AGENT_BEARER_TOKEN"
   server_slug: "sg-1"
   tls_insecure: false
+  outbox_path: "/var/lib/xray-agent/outbox.db"
 
 xray:
   binary: "/usr/local/bin/xray"

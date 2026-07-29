@@ -32,6 +32,17 @@ func New(cfg *config.Config, log *slog.Logger) *Collector {
 }
 
 func (c *Collector) QueryUserBytes(ctx context.Context, emails []string) (map[string][2]int64, error) {
+	return c.queryUserBytes(ctx, emails, c.cfg.Xray.StatsResetEachPush)
+}
+
+// QueryUserBytesCumulative never resets Xray counters. Socket delivery uses
+// persisted baselines and a durable outbox, so counters may only be advanced
+// after the sample and its outbound event are committed locally.
+func (c *Collector) QueryUserBytesCumulative(ctx context.Context, emails []string) (map[string][2]int64, error) {
+	return c.queryUserBytes(ctx, emails, false)
+}
+
+func (c *Collector) queryUserBytes(ctx context.Context, emails []string, reset bool) (map[string][2]int64, error) {
 	conn, err := grpc.NewClient(c.cfg.Xray.APIServer, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
@@ -42,7 +53,7 @@ func (c *Collector) QueryUserBytes(ctx context.Context, emails []string) (map[st
 	client := statscommand.NewStatsServiceClient(conn)
 	res := make(map[string][2]int64, len(emails))
 	for _, email := range emails {
-		up, dn, err := c.fetch(ctx, client, email)
+		up, dn, err := c.fetch(ctx, client, email, reset)
 		if err != nil {
 			return nil, err
 		}
@@ -51,20 +62,19 @@ func (c *Collector) QueryUserBytes(ctx context.Context, emails []string) (map[st
 	return res, nil
 }
 
-func (c *Collector) fetch(ctx context.Context, client statscommand.StatsServiceClient, email string) (int64, int64, error) {
-	up, err := c.querySingle(ctx, client, fmt.Sprintf("user>>>%s>>>traffic>>>uplink", email))
+func (c *Collector) fetch(ctx context.Context, client statscommand.StatsServiceClient, email string, reset bool) (int64, int64, error) {
+	up, err := c.querySingle(ctx, client, fmt.Sprintf("user>>>%s>>>traffic>>>uplink", email), reset)
 	if err != nil {
 		return 0, 0, err
 	}
-	down, err := c.querySingle(ctx, client, fmt.Sprintf("user>>>%s>>>traffic>>>downlink", email))
+	down, err := c.querySingle(ctx, client, fmt.Sprintf("user>>>%s>>>traffic>>>downlink", email), reset)
 	if err != nil {
 		return 0, 0, err
 	}
 	return up, down, nil
 }
 
-func (c *Collector) querySingle(ctx context.Context, client statscommand.StatsServiceClient, name string) (int64, error) {
-	reset := c.cfg.Xray.StatsResetEachPush
+func (c *Collector) querySingle(ctx context.Context, client statscommand.StatsServiceClient, name string, reset bool) (int64, error) {
 	if reset && c.log != nil {
 		c.log.Debug("stats reset enabled, resetting counters", "name", name)
 	}

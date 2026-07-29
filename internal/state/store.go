@@ -8,10 +8,12 @@ import (
 )
 
 type Store struct {
-	mu          sync.RWMutex
-	lastVersion int64
-	clients     map[string]model.Client
-	routes      map[string]model.RouteRule
+	mu            sync.RWMutex
+	lastVersion   int64
+	clients       map[string]model.Client
+	routes        map[string]model.RouteRule
+	desired       []model.Client
+	desiredRoutes []model.RouteRule
 }
 
 func New() *Store {
@@ -57,6 +59,8 @@ func (s *Store) Update(version int64, clients []model.Client, routes []model.Rou
 	s.lastVersion = version
 	s.clients = next
 	s.routes = nextRoutes
+	s.desired = append(s.desired[:0], clients...)
+	s.desiredRoutes = append(s.desiredRoutes[:0], routes...)
 }
 
 func (s *Store) Emails() []string {
@@ -90,6 +94,17 @@ func (s *Store) RoutesSnapshot() map[string]model.RouteRule {
 		snapshot[tag] = route
 	}
 	return snapshot
+}
+
+func (s *Store) DesiredStateSnapshot() model.State {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return model.State{
+		ConfigVersion: s.lastVersion,
+		Clients:       append([]model.Client(nil), s.desired...),
+		Routes:        append([]model.RouteRule(nil), s.desiredRoutes...),
+	}
 }
 
 func equalClient(a, b model.Client) bool {

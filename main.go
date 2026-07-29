@@ -133,9 +133,11 @@ func setupCommand(args []string) {
 	binPath := fs.String("bin", "", "binary install path (default /usr/local/bin/xray-agent)")
 	ghToken := fs.String("github-token", "", "GitHub token to save into config (optional)")
 	ctlBase := fs.String("control-base-url", "", "control base URL (optional)")
+	ctlSocket := fs.String("control-socket-url", "", "control WebSocket URL (optional; derived from base URL by default)")
 	ctlToken := fs.String("control-token", "", "control bearer token (optional)")
 	ctlSlug := fs.String("control-server-slug", "", "control server slug (optional)")
 	ctlTLS := fs.String("control-tls-insecure", "", "control TLS insecure (true/false, optional)")
+	ctlOutbox := fs.String("control-outbox-path", "", "durable socket outbox path (optional)")
 	fs.Parse(args)
 
 	tlsPtr, err := parseBool(*ctlTLS, "control-tls-insecure")
@@ -154,9 +156,11 @@ func setupCommand(args []string) {
 		BinPath:     *binPath,
 		GitHubToken: *ghToken,
 		BaseURL:     *ctlBase,
+		SocketURL:   *ctlSocket,
 		Token:       *ctlToken,
 		ServerSlug:  *ctlSlug,
 		TLSInsecure: tlsPtr,
+		OutboxPath:  *ctlOutbox,
 		Logger:      log,
 	}
 	if err := agentsetup.Install(ctx, opts); err != nil {
@@ -169,9 +173,11 @@ func updateConfigCommand(args []string) {
 	fs := flag.NewFlagSet("update-config", flag.ExitOnError)
 	cfgPath := fs.String("config", defaultConfigPath, "config path")
 	ctlBase := fs.String("control-base-url", "", "control base URL")
+	ctlSocket := fs.String("control-socket-url", "", "control WebSocket URL")
 	ctlToken := fs.String("control-token", "", "control bearer token")
 	ctlSlug := fs.String("control-server-slug", "", "control server slug")
 	ctlTLS := fs.String("control-tls-insecure", "", "control TLS insecure (true/false)")
+	ctlOutbox := fs.String("control-outbox-path", "", "durable socket outbox path")
 	ghToken := fs.String("github-token", "", "GitHub token to persist (optional)")
 	restart := fs.Bool("restart", true, "restart xray-agent service after update")
 	fs.Parse(args)
@@ -189,9 +195,11 @@ func updateConfigCommand(args []string) {
 	err = agentsetup.UpdateControl(ctx, agentsetup.UpdateControlOptions{
 		ConfigPath:  *cfgPath,
 		BaseURL:     *ctlBase,
+		SocketURL:   *ctlSocket,
 		Token:       *ctlToken,
 		ServerSlug:  *ctlSlug,
 		TLSInsecure: tlsPtr,
+		OutboxPath:  *ctlOutbox,
 		GitHubToken: *ghToken,
 		Logger:      log,
 		Restart:     *restart,
@@ -237,17 +245,25 @@ func runAgentArgs(args []string) {
 		os.Exit(1)
 	}
 
+	agentVersion := strings.TrimSpace(embeddedVersion)
+	xrayCoreVersion := strings.TrimSpace(xraycore.InstalledVersion(ctx))
 	ctrl := control.NewClient(
 		cfg,
 		log,
-		strings.TrimSpace(embeddedVersion),
-		strings.TrimSpace(xraycore.InstalledVersion(ctx)),
+		agentVersion,
+		xrayCoreVersion,
 	)
+	socketClient, err := control.NewSocketClient(cfg, log, agentVersion, xrayCoreVersion)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "initialize socket control: %v\n", err)
+		os.Exit(1)
+	}
+	defer socketClient.Close()
 	xm := xray.NewManager(cfg, log)
 	stats := internalStats.New(cfg, log)
 	metricCollector := metrics.New(log)
 
-	agt := agent.New(cfg, log, ctrl, xm, stats, metricCollector)
+	agt := agent.New(cfg, log, ctrl, xm, stats, metricCollector).UseSocket(socketClient)
 	agt.Start(ctx)
 
 	<-ctx.Done()

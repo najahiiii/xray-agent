@@ -3,8 +3,10 @@ module github.com/najahiiii/xray-agent
 go 1.26
 
 require (
+	github.com/gorilla/websocket v1.5.3
 	github.com/shirou/gopsutil/v4 v4.26.4
 	github.com/xtls/xray-core v1.260327.0
+	go.etcd.io/bbolt v1.4.3
 	google.golang.org/grpc v1.81.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -16,7 +18,6 @@ require (
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/google/btree v1.1.3 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/juju/ratelimit v1.0.2 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
