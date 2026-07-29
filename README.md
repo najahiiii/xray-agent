@@ -15,37 +15,43 @@ Provisioning/telemetry side for Xray nodes. The agent stays on the same host as 
 
 ```mermaid
 flowchart LR
-  subgraph Controlpanel["Control panel<br/>Next.js + Prisma"]
-    UI["Admin Dashboard<br/>App Router + React"] --> API["API Routes<br/>(SSE/REST)"]
-    API --> DB[(PostgreSQL/MySQL via Prisma)]
-    API -. "server health SSE" .-> UI
+  subgraph ControlPlane["Control panel"]
+    UI["Admin Dashboard<br/>React"]
+    Web["Next.js App Router<br/>REST + SSE"]
+    Gateway["Agent WebSocket Gateway<br/>Node.js + ws"]
+    DB[(PostgreSQL<br/>Prisma)]
+
+    UI <--> Web
+    Web <--> DB
+    Gateway <--> DB
+    Gateway -. "PostgreSQL NOTIFY<br/>realtime refresh" .-> Web
+    Web -. "SSE updates" .-> UI
   end
 
   subgraph ServerNode["Xray Node"]
     Agent["xray-agent<br/>Go daemon"]
-    XrayCore["Xray-core<br/>HandlerService + StatsService"]
+    Outbox[(BoltDB outbox)]
+    XrayCore["Xray-core<br/>Handler + Routing + Stats gRPC"]
     Metrics["Host metrics collector"]
     Systemd[(systemd)]
+
+    Agent <--> |"durable queue + acknowledgments"| Outbox
+    Agent <--> |"apply state + query telemetry"| XrayCore
+    Metrics --> |"sample"| Agent
+    Agent <--> |"supervision + restart commands"| Systemd
   end
 
-  Agent <--> |"WSS /agent/ws<br/>state + commands + telemetry"| API
-
-  Agent --> |"apply/remove users"| XrayCore
-  Agent --> |"query per-user counters"| XrayCore
-  Metrics --> |sample| Agent
-  Systemd --> |"supervise restart"| Agent
-  API --> |"persist + aggregate"| DB
-  API --> |"/servers/{slug}/metrics/stream<br/>SSE payloads"| UI
+  Agent <--> |"WSS /agent/ws<br/>state + commands + heartbeat<br/>stats + online + metrics"| Gateway
 ```
 
 ### Component responsibilities
 
 - **Control panel (web/)** – Next.js App Router handles both dashboard views and authenticated API endpoints. Prisma persists servers, clients, stats, metrics, and heartbeat tables, while SSE endpoints (e.g., `/servers/{slug}/metrics/stream`) push refreshed health cards to admins.
 - **xray-agent (internal/agent/agent.go)** – Lightweight Go service started by systemd on each node. A persistent socket receives desired state and commands, while background loops collect stats, online users, host/Xray metrics, heartbeats, and core update information. Durable messages are replayed from a local BoltDB outbox until the gateway acknowledges their database commit.
-- **Xray-core integration** – Agent communicates with HandlerService/StatsService/RoutingService over gRPC (`127.0.0.1:10085` by default). HandlerService mutates in-memory users without touching config files, RoutingService applies runtime rules, and StatsService reports ever-increasing counters (optionally reset after each push).
+- **Xray-core integration** – Agent communicates with HandlerService/StatsService/RoutingService over gRPC (`127.0.0.1:10085` by default). HandlerService mutates in-memory users without touching config files, RoutingService applies runtime rules, and StatsService reports ever-increasing counters.
 - **Dashboard experience** – Admin UI hydrates server cards with `loadServerHealthEntry`, combining the latest heartbeat, server metrics, aggregates, and client listings. SSE events stream updates every ~10 seconds to keep charts and status badges current.
 
-All gRPC traffic is expected to stay on localhost; expose Xray’s API listener only to the agent. The control panel never reaches into Xray directly—it only talks to the agent via HTTPS.
+All gRPC traffic is expected to stay on localhost; expose Xray’s API listener only to the agent. The control panel never reaches into Xray directly—it only talks to the agent via WebSocket.
 
 ## Configuration
 
@@ -61,21 +67,19 @@ control:
   outbox_path: /var/lib/xray-agent/outbox.db
 
 xray:
-  binary: /usr/local/bin/xray # still used for stats reset checks if needed
   api_server: 127.0.0.1:10085 # HandlerService + StatsService + RoutingService listener
   api_timeout_sec: 5
-  stats_reset_each_push: true # legacy HTTP mode only; socket mode uses cumulative counters
   inbound_tags:
     vless: vless-ws
     vmess: vmess-ws
     trojan: trojan-ws
 
 intervals:
-  state_sec: 15
   online_sec: 10
   stats_sec: 60
   heartbeat_sec: 30
   metrics_sec: 30
+  core_check_sec: 43200
 
 logging:
   level: info
@@ -152,83 +156,6 @@ Systemd unit (installed by setup subcommand): `/usr/lib/systemd/system/xray-agen
 ## Control-panel contract
 
 The active runtime contract is [WebSocket protocol v1](docs/socket-protocol.md).
-The REST endpoints below describe the legacy rollout-compatible contract and
-are no longer polled when the runtime socket client is attached.
-
-### `GET /api/agents/{server_slug}/state`
-
-```json
-{
-  "config_version": 12,
-  "clients": [
-    { "proto": "vless", "id": "UUID", "email": "user_1@planA" },
-    { "proto": "vmess", "id": "UUID", "email": "user_2@planB" },
-    { "proto": "trojan", "password": "pass123", "email": "user_3@planC" }
-  ],
-  "routes": [
-    {
-      "tag": "ads-block",
-      "outbound_tag": "blocked",
-      "domain": ["geosite:category-ads"]
-    },
-    { "tag": "direct-local", "outbound_tag": "direct", "ip": ["geoip:private"] }
-  ],
-  "meta": { "ws_path": "/ws" }
-}
-```
-
-Notes:
-
-- `routes` are applied via RoutingService and live only in memory; ensure control/state endpoint re-sends them after an Xray restart.
-
-### `POST /api/agents/{server_slug}/stats`
-
-```json
-{
-  "server_time": "2025-11-07T15:01:00Z",
-  "users": [{ "email": "user_1@planA", "uplink": 123, "downlink": 456 }]
-}
-```
-
-### `POST /api/agents/{server_slug}/online`
-
-```json
-{
-  "server_time": "2025-11-07T15:01:00Z",
-  "users": [
-    {
-      "email": "user_1@planA",
-      "proto": "vless",
-      "ips": [
-        { "address": "203.0.113.5", "last_seen_at": "2025-11-07T15:00:58Z" }
-      ]
-    }
-  ]
-}
-```
-
-### `POST /api/agents/{server_slug}/heartbeat`
-
-```json
-{
-  "ok": true,
-  "agent_version": "v1.0.3"
-}
-```
-
-### `POST /api/agents/{server_slug}/metrics`
-
-```json
-{
-  "server_time": "2025-11-07T15:01:00Z",
-  "cpu_percent": 42.5,
-  "memory_percent": 71.2,
-  "bandwidth_up_mbps": 85.1,
-  "bandwidth_down_mbps": 233.7
-}
-```
-
-Fields are optional; send whatever the agent could sample for that interval.
 
 ## Development
 

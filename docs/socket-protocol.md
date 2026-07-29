@@ -97,9 +97,5 @@ returns the stored result instead of executing a destructive operation twice.
 - Only one writer goroutine writes data frames.
 - The gateway should enforce one active connection per server slug.
 
-## Cutover
-
-The v1 agent runtime uses WebSocket for state, commands, heartbeat, stats,
-online snapshots, and metrics. The legacy HTTP client remains compiled only to
-support a safe deployment window and existing compatibility tests; `Start`
-does not run its polling loops after a `SocketClient` is attached.
+The v1 agent runtime uses WebSocket exclusively for state, commands, heartbeat,
+stats, online snapshots, and metrics.

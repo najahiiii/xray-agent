@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/najahiiii/xray-agent/internal/config"
-	"github.com/najahiiii/xray-agent/internal/control"
 	"github.com/najahiiii/xray-agent/internal/metrics"
 	"github.com/najahiiii/xray-agent/internal/model"
 	"github.com/najahiiii/xray-agent/internal/state"
@@ -24,47 +23,49 @@ var xrayCoreChecker = xraycore.Check
 type Agent struct {
 	cfg     *config.Config
 	log     *slog.Logger
-	ctrl    *control.Client
-	socket  *control.SocketClient
+	socket  socketControl
 	xray    *xray.Manager
 	stats   *stats.Collector
 	metrics *metrics.Collector
 	state   *state.Store
-	// statsSnapshot keeps the last seen cumulative counters when StatsResetEachPush is disabled.
-	statsSnapshot map[string][2]int64
-	syncMu        sync.Mutex
+	syncMu  sync.Mutex
 }
 
-func New(cfg *config.Config, log *slog.Logger, ctrl *control.Client, xr *xray.Manager, statsCollector *stats.Collector, metricsCollector *metrics.Collector) *Agent {
+type socketControl interface {
+	Run(context.Context)
+	States() <-chan *model.State
+	Commands() <-chan *model.AgentCommand
+	AgentVersion() string
+	SetXrayCoreVersion(string)
+	SetConfigVersion(int64)
+	QueueStatsSample(time.Time, map[string][2]int64) error
+	QueueOnline(*model.OnlineUsersPush) error
+	QueueMetrics(*model.ServerMetricPush) error
+	QueueHeartbeat() error
+	QueueStateApplied(int64) error
+	QueueCommandAck(string, *model.AgentCommandAck) error
+}
+
+func New(cfg *config.Config, log *slog.Logger, socket socketControl, xr *xray.Manager, statsCollector *stats.Collector, metricsCollector *metrics.Collector) *Agent {
 	return &Agent{
-		cfg:           cfg,
-		log:           log,
-		ctrl:          ctrl,
-		xray:          xr,
-		stats:         statsCollector,
-		metrics:       metricsCollector,
-		state:         state.New(),
-		statsSnapshot: map[string][2]int64{},
+		cfg:     cfg,
+		log:     log,
+		socket:  socket,
+		xray:    xr,
+		stats:   statsCollector,
+		metrics: metricsCollector,
+		state:   state.New(),
 	}
-}
-
-// UseSocket switches the runtime control plane from HTTP polling to the
-// persistent WebSocket transport. The legacy HTTP client remains attached for
-// rollout compatibility and focused tests, but Start no longer polls it.
-func (a *Agent) UseSocket(socket *control.SocketClient) *Agent {
-	a.socket = socket
-	return a
 }
 
 func (a *Agent) Start(ctx context.Context) {
-	if a.socket != nil {
-		go a.socket.Run(ctx)
-		go a.runSocketStateLoop(ctx)
-		go a.runSocketCommandLoop(ctx)
-	} else {
-		go a.runStateLoop(ctx)
-		go a.runCommandLoop(ctx)
+	if a.socket == nil {
+		a.log.Error("socket control is required")
+		return
 	}
+	go a.socket.Run(ctx)
+	go a.runStateLoop(ctx)
+	go a.runCommandLoop(ctx)
 	go a.runOnlineLoop(ctx)
 	go a.runStatsLoop(ctx)
 	go a.runMetricsLoop(ctx)
@@ -72,7 +73,7 @@ func (a *Agent) Start(ctx context.Context) {
 	go a.runCoreUpdateLoop(ctx)
 }
 
-func (a *Agent) runSocketStateLoop(ctx context.Context) {
+func (a *Agent) runStateLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -92,45 +93,9 @@ func (a *Agent) runSocketStateLoop(ctx context.Context) {
 	}
 }
 
-func (a *Agent) runStateLoop(ctx context.Context) {
-	intv := time.Duration(a.cfg.Intervals.StateSec) * time.Second
-	if intv <= 0 {
-		intv = 15 * time.Second
-	}
-	ticker := time.NewTicker(intv)
-	defer ticker.Stop()
-
-	for {
-		if err := a.syncStateOnce(ctx); err != nil {
-			a.log.Warn("state-sync", "err", err)
-		}
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
-
-func (a *Agent) syncStateOnce(ctx context.Context) error {
-	return a.syncState(ctx, false)
-}
-
 func (a *Agent) syncStateAfterRuntimeReset(ctx context.Context) error {
-	if a.socket != nil {
-		desired := a.state.DesiredStateSnapshot()
-		return a.applyDesiredState(ctx, &desired, true)
-	}
-	return a.syncState(ctx, true)
-}
-
-func (a *Agent) syncState(ctx context.Context, assumeEmptyRuntime bool) error {
-	ds, err := a.ctrl.GetState(ctx)
-	if err != nil {
-		return err
-	}
-	return a.applyDesiredState(ctx, ds, assumeEmptyRuntime)
+	desired := a.state.DesiredStateSnapshot()
+	return a.applyDesiredState(ctx, &desired, true)
 }
 
 func (a *Agent) applyDesiredState(ctx context.Context, ds *model.State, assumeEmptyRuntime bool) error {
@@ -199,11 +164,7 @@ func (a *Agent) runStatsLoop(ctx context.Context) {
 		emails := a.state.Emails()
 		if len(emails) > 0 {
 			slices.Sort(emails)
-			if a.socket != nil {
-				a.collectAndQueueSocketStats(ctx, emails)
-			} else {
-				a.collectAndPostHTTPStats(ctx, emails)
-			}
+			a.collectAndQueueStats(ctx, emails)
 		}
 
 		select {
@@ -214,8 +175,8 @@ func (a *Agent) runStatsLoop(ctx context.Context) {
 	}
 }
 
-func (a *Agent) collectAndQueueSocketStats(ctx context.Context, emails []string) {
-	statsMap, err := a.stats.QueryUserBytesCumulative(ctx, emails)
+func (a *Agent) collectAndQueueStats(ctx context.Context, emails []string) {
+	statsMap, err := a.stats.QueryUserBytes(ctx, emails)
 	if err != nil {
 		a.log.Warn("stats query", "err", err)
 		return
@@ -225,37 +186,6 @@ func (a *Agent) collectAndQueueSocketStats(ctx context.Context, emails []string)
 		return
 	}
 	a.log.Debug("queued cumulative stats sample", "count", len(statsMap))
-}
-
-func (a *Agent) collectAndPostHTTPStats(ctx context.Context, emails []string) {
-	statsMap, err := a.stats.QueryUserBytes(ctx, emails)
-	if err != nil {
-		a.log.Warn("stats query", "err", err)
-		return
-	}
-	if !a.cfg.Xray.StatsResetEachPush {
-		statsMap = a.normalizeStatsDeltas(statsMap)
-	} else if len(a.statsSnapshot) > 0 {
-		clear(a.statsSnapshot)
-	}
-
-	users := make([]model.UserUsage, 0, len(statsMap))
-	for _, email := range emails {
-		if usage, ok := statsMap[email]; ok {
-			lower := strings.ToLower(email)
-			users = append(users, model.UserUsage{Email: lower, Uplink: usage[0], Downlink: usage[1]})
-			a.log.Debug("usage sample", "email", lower, "uplink", usage[0], "downlink", usage[1])
-		}
-	}
-	if len(users) == 0 {
-		return
-	}
-	payload := &model.StatsPush{ServerTime: time.Now().UTC(), Users: users}
-	if err := a.ctrl.PostStats(ctx, payload); err != nil {
-		a.log.Warn("post stats", "err", err)
-	} else {
-		a.log.Debug("posted stats", "count", len(users))
-	}
 }
 
 func (a *Agent) runOnlineLoop(ctx context.Context) {
@@ -275,16 +205,10 @@ func (a *Agent) runOnlineLoop(ctx context.Context) {
 		if err != nil {
 			a.log.Warn("online query", "err", err)
 		} else if payload != nil {
-			if a.socket != nil {
-				if err := a.socket.QueueOnline(payload); err != nil {
-					a.log.Warn("queue online users", "err", err)
-				} else {
-					a.log.Debug("queued online users", "count", len(payload.Users))
-				}
-			} else if err := a.ctrl.PostOnlineUsers(ctx, payload); err != nil {
-				a.log.Warn("post online users", "err", err)
+			if err := a.socket.QueueOnline(payload); err != nil {
+				a.log.Warn("queue online users", "err", err)
 			} else {
-				a.log.Debug("posted online users", "count", len(payload.Users))
+				a.log.Debug("queued online users", "count", len(payload.Users))
 			}
 		}
 
@@ -305,13 +229,7 @@ func (a *Agent) runHeartbeatLoop(ctx context.Context) {
 	defer ticker.Stop()
 
 	for {
-		var err error
-		if a.socket != nil {
-			err = a.socket.QueueHeartbeat()
-		} else {
-			err = a.ctrl.Heartbeat(ctx)
-		}
-		if err != nil {
+		if err := a.socket.QueueHeartbeat(); err != nil {
 			a.log.Debug("heartbeat", "err", err)
 		}
 
@@ -337,22 +255,10 @@ func (a *Agent) runMetricsLoop(ctx context.Context) {
 
 	for {
 		if sample := a.collectMetricsSample(ctx); sample != nil {
-			if a.socket != nil {
-				if err := a.socket.QueueMetrics(sample); err != nil {
-					a.log.Warn("queue metrics", "err", err)
-				} else {
-					a.log.Debug("queued metrics")
-				}
-			} else if err := a.ctrl.PostMetrics(ctx, sample); err != nil {
-				a.log.Warn("post metrics", "err", err)
+			if err := a.socket.QueueMetrics(sample); err != nil {
+				a.log.Warn("queue metrics", "err", err)
 			} else {
-				a.log.Debug("posted metrics",
-					"cpu", sample.CPUPercent,
-					"mem", sample.MemoryPercent,
-					"up_mbps", sample.BandwidthUpMbps,
-					"down_mbps", sample.BandwidthDownMbps,
-					"sys_stats", sample.XraySysStats != nil,
-				)
+				a.log.Debug("queued metrics")
 			}
 		}
 
@@ -365,10 +271,6 @@ func (a *Agent) runMetricsLoop(ctx context.Context) {
 }
 
 func (a *Agent) runCoreUpdateLoop(ctx context.Context) {
-	if a.ctrl == nil {
-		return
-	}
-
 	intv := time.Duration(a.cfg.Intervals.CoreCheckSec) * time.Second
 	if intv == 0 {
 		intv = time.Duration(config.DefaultCoreCheckIntervalSec) * time.Second
@@ -422,9 +324,6 @@ func (a *Agent) runCoreUpdateLoop(ctx context.Context) {
 }
 
 func (a *Agent) setXrayCoreVersion(version string) {
-	if a.ctrl != nil {
-		a.ctrl.SetXrayCoreVersion(version)
-	}
 	if a.socket != nil {
 		a.socket.SetXrayCoreVersion(version)
 	}
@@ -490,48 +389,4 @@ func (a *Agent) collectOnlineSnapshot(ctx context.Context) (*model.OnlineUsersPu
 		ServerTime: time.Now().UTC(),
 		Users:      users,
 	}, nil
-}
-
-func (a *Agent) normalizeStatsDeltas(current map[string][2]int64) map[string][2]int64 {
-	if len(current) == 0 {
-		clear(a.statsSnapshot)
-		return current
-	}
-
-	normalized := make(map[string][2]int64, len(current))
-	present := make(map[string]struct{}, len(current))
-
-	for email, usage := range current {
-		key := strings.ToLower(email)
-		present[key] = struct{}{}
-
-		prev, found := a.statsSnapshot[key]
-		uplink := int64(0)
-		downlink := int64(0)
-		if found {
-			uplink = usageCounterDelta(prev[0], usage[0])
-			downlink = usageCounterDelta(prev[1], usage[1])
-		}
-
-		normalized[email] = [2]int64{uplink, downlink}
-		a.statsSnapshot[key] = usage
-	}
-
-	for email := range a.statsSnapshot {
-		if _, ok := present[email]; !ok {
-			delete(a.statsSnapshot, email)
-		}
-	}
-
-	return normalized
-}
-
-func usageCounterDelta(prev, curr int64) int64 {
-	if curr <= 0 {
-		return 0
-	}
-	if curr >= prev {
-		return curr - prev
-	}
-	return curr
 }

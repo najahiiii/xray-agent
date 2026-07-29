@@ -12,14 +12,12 @@ xray:
   version: "25.10.15"
   api_server: "127.0.0.1:10085"
   api_timeout_sec: 5
-  stats_reset_each_push: true
   inbound_tags:
     vless: "vless-ws"
     vmess: "vmess-ws"
     trojan: "trojan-ws"
 
 intervals:
-  state_sec: 15
   online_sec: 10
   stats_sec: 60
   heartbeat_sec: 30

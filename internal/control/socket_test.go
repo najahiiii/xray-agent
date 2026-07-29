@@ -2,6 +2,8 @@ package control
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -14,6 +16,10 @@ import (
 	"github.com/najahiiii/xray-agent/internal/model"
 	"github.com/najahiiii/xray-agent/internal/socketproto"
 )
+
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 func TestSocketClientHandshakeReplayAndInboundMessages(t *testing.T) {
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}

@@ -501,6 +501,14 @@ func resolveSocketURL(cfg *config.Config) (string, error) {
 	return parsed.String(), nil
 }
 
+func normalizeTaggedVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" || strings.HasPrefix(version, "v") {
+		return version
+	}
+	return "v" + version
+}
+
 func waitForReconnect(ctx context.Context, delay time.Duration) bool {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()

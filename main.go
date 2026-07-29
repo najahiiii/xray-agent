@@ -247,12 +247,6 @@ func runAgentArgs(args []string) {
 
 	agentVersion := strings.TrimSpace(embeddedVersion)
 	xrayCoreVersion := strings.TrimSpace(xraycore.InstalledVersion(ctx))
-	ctrl := control.NewClient(
-		cfg,
-		log,
-		agentVersion,
-		xrayCoreVersion,
-	)
 	socketClient, err := control.NewSocketClient(cfg, log, agentVersion, xrayCoreVersion)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "initialize socket control: %v\n", err)
@@ -263,7 +257,7 @@ func runAgentArgs(args []string) {
 	stats := internalStats.New(cfg, log)
 	metricCollector := metrics.New(log)
 
-	agt := agent.New(cfg, log, ctrl, xm, stats, metricCollector).UseSocket(socketClient)
+	agt := agent.New(cfg, log, socketClient, xm, stats, metricCollector)
 	agt.Start(ctx)
 
 	<-ctx.Done()

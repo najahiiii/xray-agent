@@ -28,28 +28,6 @@ var coreRestartSyncer = func(a *Agent, ctx context.Context) error {
 }
 
 func (a *Agent) runCommandLoop(ctx context.Context) {
-	intv := time.Duration(a.cfg.Intervals.StateSec) * time.Second
-	if intv <= 0 {
-		intv = 15 * time.Second
-	}
-
-	ticker := time.NewTicker(intv)
-	defer ticker.Stop()
-
-	for {
-		if err := a.executeNextCommand(ctx); err != nil {
-			a.log.Warn("command-sync", "err", err)
-		}
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
-
-func (a *Agent) runSocketCommandLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -63,17 +41,6 @@ func (a *Agent) runSocketCommandLoop(ctx context.Context) {
 			}
 		}
 	}
-}
-
-func (a *Agent) executeNextCommand(ctx context.Context) error {
-	command, err := a.ctrl.GetNextCommand(ctx)
-	if err != nil {
-		return err
-	}
-	if command == nil {
-		return nil
-	}
-	return a.executeCommand(ctx, command)
 }
 
 func (a *Agent) executeCommand(ctx context.Context, command *model.AgentCommand) error {
@@ -182,7 +149,7 @@ func (a *Agent) updateAgentAndAck(
 
 	ack.Result["target_version"] = targetVersion
 
-	updateResult, updateErr := agentUpdater(context.Background(), a.ctrl.AgentVersion(), selfupdate.Options{
+	updateResult, updateErr := agentUpdater(context.Background(), a.socket.AgentVersion(), selfupdate.Options{
 		Version: targetVersion,
 		Token:   a.cfg.GitHub.Token,
 		Logger:  a.log,
@@ -287,14 +254,8 @@ func (a *Agent) updateCoreAndAck(
 }
 
 func (a *Agent) postCommandAck(commandID string, ack *model.AgentCommandAck) error {
-	if a.socket != nil {
-		if err := a.socket.QueueCommandAck(commandID, ack); err != nil {
-			return fmt.Errorf("queue command ack %s: %w", commandID, err)
-		}
-		return nil
-	}
-	if err := a.ctrl.AckCommand(context.Background(), commandID, ack); err != nil {
-		return fmt.Errorf("ack command %s: %w", commandID, err)
+	if err := a.socket.QueueCommandAck(commandID, ack); err != nil {
+		return fmt.Errorf("queue command ack %s: %w", commandID, err)
 	}
 	return nil
 }
@@ -344,10 +305,7 @@ func resolveUpdatedCoreVersion(
 }
 
 func (a *Agent) refreshCoreVersionHeartbeat() error {
-	if a.socket != nil {
-		return a.socket.QueueHeartbeat()
-	}
-	return a.ctrl.Heartbeat(context.Background())
+	return a.socket.QueueHeartbeat()
 }
 
 func (a *Agent) syncStateAfterCoreRestart(ctx context.Context) error {

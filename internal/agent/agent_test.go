@@ -2,19 +2,15 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/najahiiii/xray-agent/internal/config"
-	"github.com/najahiiii/xray-agent/internal/control"
 	"github.com/najahiiii/xray-agent/internal/model"
 	"github.com/najahiiii/xray-agent/internal/stats"
 	"github.com/najahiiii/xray-agent/internal/xray"
@@ -73,7 +69,6 @@ func newTestConfig(api string) *config.Config {
 	cfg.Xray.InboundTags.VLESS = "v"
 	cfg.Xray.InboundTags.VMESS = "m"
 	cfg.Xray.InboundTags.TROJAN = "t"
-	cfg.Intervals.StateSec = 15
 	cfg.Intervals.OnlineSec = 10
 	cfg.Intervals.StatsSec = 60
 	cfg.Intervals.HeartbeatSec = 30
@@ -82,7 +77,7 @@ func newTestConfig(api string) *config.Config {
 	return cfg
 }
 
-func TestAgentSyncStateOnce(t *testing.T) {
+func TestAgentApplyDesiredState(t *testing.T) {
 	rec, addr, closeFn := startHandler(t)
 	defer closeFn()
 
@@ -95,23 +90,16 @@ func TestAgentSyncStateOnce(t *testing.T) {
 		},
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(stateResp)
-	}))
-	defer srv.Close()
-	cfg.Control.BaseURL = srv.URL
-
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	ctrl := control.NewClient(cfg, log, "v1.0.3", "v25.10.15")
 	manager := xray.NewManager(cfg, log)
 	collector := stats.New(cfg, log)
 
-	a := New(cfg, log, ctrl, manager, collector, nil)
+	a := New(cfg, log, nil, manager, collector, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	if err := a.syncStateOnce(ctx); err != nil {
-		t.Fatalf("syncStateOnce: %v", err)
+	if err := a.applyDesiredState(ctx, &stateResp, false); err != nil {
+		t.Fatalf("applyDesiredState: %v", err)
 	}
 
 	if len(rec.adds) != 1 || rec.adds[0] != "user@example.com" {
@@ -135,18 +123,11 @@ func TestSyncStateAfterRuntimeResetReappliesCachedClients(t *testing.T) {
 		},
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(stateResp)
-	}))
-	defer srv.Close()
-	cfg.Control.BaseURL = srv.URL
-
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	ctrl := control.NewClient(cfg, log, "v1.0.3", "v25.10.15")
 	manager := xray.NewManager(cfg, log)
 	collector := stats.New(cfg, log)
 
-	a := New(cfg, log, ctrl, manager, collector, nil)
+	a := New(cfg, log, nil, manager, collector, nil)
 	a.state.Update(stateResp.ConfigVersion, stateResp.Clients, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -219,7 +200,7 @@ func TestCheckCoreUpdateOnceUsesLatestRelease(t *testing.T) {
 	}
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a := New(cfg, log, control.NewClient(cfg, log, "v1.0.3", "v25.10.15"), nil, nil, nil)
+	a := New(cfg, log, nil, nil, nil, nil)
 
 	res, err := a.checkCoreUpdateOnce(context.Background())
 	if err != nil {
@@ -257,7 +238,7 @@ func TestRunCoreUpdateLoopChecksInBackground(t *testing.T) {
 	}
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a := New(cfg, log, control.NewClient(cfg, log, "v1.0.3", "v25.10.15"), nil, nil, nil)
+	a := New(cfg, log, nil, nil, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

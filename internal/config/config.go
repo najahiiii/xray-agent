@@ -12,7 +12,6 @@ const (
 	DefaultXrayVersion          = "v25.10.15"
 	DefaultSocketPath           = "/agent/ws"
 	DefaultOutboxPath           = "/var/lib/xray-agent/outbox.db"
-	DefaultStateIntervalSec     = 15
 	DefaultOnlineIntervalSec    = 10
 	DefaultStatsIntervalSec     = 60
 	DefaultHeartbeatIntervalSec = 30
@@ -32,11 +31,10 @@ type Config struct {
 	} `yaml:"control"`
 
 	Xray struct {
-		Version            string `yaml:"version"`
-		APIServer          string `yaml:"api_server"`
-		APITimeoutSec      int    `yaml:"api_timeout_sec"`
-		StatsResetEachPush bool   `yaml:"stats_reset_each_push"`
-		InboundTags        struct {
+		Version       string `yaml:"version"`
+		APIServer     string `yaml:"api_server"`
+		APITimeoutSec int    `yaml:"api_timeout_sec"`
+		InboundTags   struct {
 			VLESS  string `yaml:"vless"`
 			VMESS  string `yaml:"vmess"`
 			TROJAN string `yaml:"trojan"`
@@ -48,7 +46,6 @@ type Config struct {
 	} `yaml:"github"`
 
 	Intervals struct {
-		StateSec     int `yaml:"state_sec"`
 		OnlineSec    int `yaml:"online_sec"`
 		StatsSec     int `yaml:"stats_sec"`
 		HeartbeatSec int `yaml:"heartbeat_sec"`
@@ -83,9 +80,6 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Xray.InboundTags.VLESS == "" || cfg.Xray.InboundTags.VMESS == "" || cfg.Xray.InboundTags.TROJAN == "" {
 		return nil, fmt.Errorf("xray.inbound_tags (vless/vmess/trojan) required")
-	}
-	if cfg.Intervals.StateSec == 0 {
-		cfg.Intervals.StateSec = DefaultStateIntervalSec
 	}
 	if cfg.Intervals.OnlineSec == 0 {
 		cfg.Intervals.OnlineSec = DefaultOnlineIntervalSec
